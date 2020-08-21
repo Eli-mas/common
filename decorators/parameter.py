@@ -44,11 +44,10 @@ def assert_objects_are_of_specified_types(
 		)
 	
 	if names is not None:
-		names,_types = zip(*names.items()) # names was a dict of <name:type> entries
-		"""if raise_for_key: # raise KeyError if name is missing from source
-			objects = tuple(source[n] for n in names)
-		else: # fill with a default value, null, when name not found
-			objects = tuple(source.get(n,null) for n in names)"""
+		names,_types = zip(*names.items())
+		# `names` was a dict of <name:type> entries
+		# now `names` is a tuple of name (str) objects
+		# and type objects have been stored in _types
 		objects = tuple(source[n] for n in names)
 		names = tuple("'%s'"%n for n in names)
 	
@@ -58,8 +57,11 @@ def assert_objects_are_of_specified_types(
 		if objects is None:
 			objects,_types = zip(*_types) # _types was a container of (object,type) pairs
 	
+	# by the time we get here:
+	#     `names` is an iterable of strings indicating parameter names
+	#     `objects` is an iterable of objects to which each name is assigned
+	#     `_types` is an iterable telling the expected type of each object
 	for n,o,t in zip(names, objects, _types):
-		#if o is not null:
 		assert isinstance(o,t), \
 		f"the value passed for {n} is not of required type {t}: " \
 		f"instead received this object of type {type(o)}: {o}" \
@@ -74,40 +76,37 @@ def validate_parameter_types(**map_names_types):
 		and make 'assert_objects_are_of_specified_types' compatible
 		for efficiency
 	"""
-	for t in map_names_types:
-		assert isinstance(t,type), f'passed object of type {type(t)}, not {type}'
+	for n,t in map_names_types.items():
+		assert isinstance(t, type), \
+			f'passed object of type {type(t)}, not {type} for name {n}'
 	
-	def validate_and_call_wrapper(func):
+	def wrapper_around_validate_and_call(func):
 		"""
-		perform one-time verification that function defaults match expected types,
-		then define the wrapper function that calls the intended function
-		and verifying the types of dynamically passed arguments
+		Perform one-time verification that function defaults match expected
+		types, then define the wrapper function that calls the intended
+		function and verifies the types of dynamically passed arguments
 		"""
 		defaults, pos_arg = separate_required_and_default_parameters(func)
 		
 		# validate that default values are in line with expected types
-		assert_objects_are_of_specified_types(names=map_names_types,source=source)
-		#for parameter_name,required_parameter_type in map_names_types.items():
-		#	assert isinstance(source[parameter_name],required_parameter_type), \
-		#		"validate_parameter_types: the default value for parameter " \
-		#		f"{parameter_name}={source[parameter_name]} " \
-		#		f"in {func.__qualname__} is not of required type {required_parameter_type}" \
-		#		"; check the function's definition"
+		assert_objects_are_of_specified_types(names=map_names_types, source=defaults)
 		
 		def validate_and_call(*args,**kwargs):
 			"""
-			call the target function whose default values have already been verified,
-			and assert that passed values match expected types
+			Call the target function whose default values have already been
+			verified, and assert that passed values match expected types
 			
-			configured to handle the case of varargs (which go unchecked)
-			and varkwargs (keywords not defined in the original function are ignored)
+			Varargs go unchecked, and varkwargs are ignored
 			"""
 			print(f"calling 'validate_and_call' on {func.__qualname__} with args={args} and kw={kwargs}")
 			
-			# map names both in default and non-default args
-			name_obj_map = {k:kwargs[k] for k in kwargs.keys() & map_names_types.keys()} # mapping of names to respective objects
-			name_obj_map.update({pos_arg[i]:args[i] for i in range(min(len(args),len(pos_arg)))})
-			# why take the minimum of the lengths?
+			# map names both in default and positional parameters
+			# first, map names passed as keywords to respective objects
+			name_obj_map = {k:kwargs[k] for k in kwargs.keys() & map_names_types.keys()}
+			name_obj_map.update({pos_arg[i]:args[i]
+								 for i in range(min(len(args), len(pos_arg)))
+								})
+			# why take the minimum of the lengths in the above comprehension?
 			#	if len(pos_arg)<len(args), then more args were passed then required args,
 			#		so varargs was used, and variable arguments should be ignored
 			#	if len(args)<len(pos_arg), required arguments are either missing
@@ -115,25 +114,18 @@ def validate_parameter_types(**map_names_types):
 			#		rather than args, in which case they will be caught by kwargs
 			
 			# assert that passed values correspond to expected types
-			assert_objects_are_of_specified_types(names=map_names_types,source=name_obj_map)
-			#for parameter_name,required_parameter_type in map_names_types.items():
-			#	try:
-			#		print(f'asserting isinstance({parameter_name}={kwargs[parameter_name]}, '
-			#			  f'{required_parameter_type})')
-			#		
-			#		assert kwargs[parameter_name]==required_parameter_type, \
-			#		"validate_parameter_types: the value passed for parameter " \
-			#		f"{parameter_name}={spec.kwonlydefaults[parameter_name]}" \
-			#		f"in {func.__qualname__} is not of required type {required_parameter_type}"
-			#	except KeyError:
-			#		# KeyError arises if we rely on default value
-			#		# and do not pass a keyword explicitly
-			#		pass
+			assert_objects_are_of_specified_types(names=map_names_types, source=name_obj_map)
 			return func(*args,**kwargs)
 		
 		return validate_and_call
 	
-	return validate_and_call_wrapper
+	return wrapper_around_validate_and_call
+
+def validate_parameters(**map_from_names_to_callables):
+	"""More general version of parameter validation, where instead of verifying
+	input types, we verify parameters on the basis of arbitrary conditions."""
+	NotImplemented
+	# the structure will be the same as in 'validate_parameter_types'
 
 def separate_required_and_default_parameters(function):
 		"""
