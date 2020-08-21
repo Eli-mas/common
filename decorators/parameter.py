@@ -1,4 +1,9 @@
-"""At the moment"""
+"""Decorators for operating on parameters passed to a callable at runtime,
+with the option of automatically replacing parameters based on specified rules.
+
+Note, at the moment the decorators here cannot be stacked,
+which I intend to fix.
+"""
 
 from inspect import getfullargspec
 # from ..common.cls import MultiIterator
