@@ -6,14 +6,12 @@ which I intend to fix.
 """
 
 from inspect import getfullargspec
-# from ..common.cls import MultiIterator
 from collections import deque
 import functools
 from ..collections import consume
 
 def assert_objects_are_of_specified_types(
 	_types=None, objects=None, names=None, source=None,
-	#raise_for_key=False
 ):
 	"""
 	Given set of types and objects, verify that each object is an instance
@@ -33,29 +31,30 @@ def assert_objects_are_of_specified_types(
 	
 	Note to self: this chain of logic might be a bit much for one function;
 	it might be better to split into different functions, each one of which
-	handles a different one of the above cases
+	handles a different one of the above cases; control flow/rules might be
+	confusing.
 	"""
-	#null = object() # used if 'names' and 'source' come into play
 	
-	if (source is None) ^ (names is None): # accept neither or both, but not one in isolation
+	if (source is None) ^ (names is None):
+		# accept neither or both, but not one in isolation
 		raise ValueError(
 			"pass arguments to both 'source' and 'names' or neither; "
 			f"you passed source={source}, names={names}"
 		)
 	
-	if names is not None:
+	if names is None:
+		# if no names, at least indicate the index of each item
+		names = ("the object at index %i"%i for i in range(len(_types)))
+		if objects is None:
+			objects, _types = zip(*_types) # _types was a container of (object,type) pairs
+	
+	else:
 		names,_types = zip(*names.items())
 		# `names` was a dict of <name:type> entries
 		# now `names` is a tuple of name (str) objects
 		# and type objects have been stored in _types
 		objects = tuple(source[n] for n in names)
 		names = tuple("'%s'"%n for n in names)
-	
-	else:
-		# if no names, at least indicate the index of each item
-		names = ("the object at index %i"%i for i in range(len(_types)))
-		if objects is None:
-			objects,_types = zip(*_types) # _types was a container of (object,type) pairs
 	
 	# by the time we get here:
 	#     `names` is an iterable of strings indicating parameter names
@@ -266,12 +265,20 @@ def modify_parameters_dynamically(**operations):
 		return wrapper
 	return decorator
 
+def verify_and_modify_parameters(verifications, modifications):
+	"""Combination of 'validate_parameters' and 'modify_parameters_dynamically'"""
+	NotImplemented
+	# can either be a combination of internal logic of above functions,
+	# or simply a decorator stack, once I get that to work
+
 def makeax(parameter):
 	"""
 	Given a function that specifies a keyword corresponding to a matplotlib
 	Axes instance, automatically submit an axis for the keyword to the function
 	at runtime if the keyword receives None (the intended default). The axis
 	is given by plt.gca().
+	
+	Note to self: this should probably be moved to mpl_wrap
 	"""
 	from matplotlib import pyplot as plt
 	op = lambda ax: plt.gca() if ax is None else ax
