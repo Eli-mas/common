@@ -48,6 +48,12 @@ def filename_insert(f,insert):
 	f = asPath(f)
 	return str(f.with_name(f'{f.name}{insert}').with_sufix(f.suffix))
 
+def with_filename(f, name):
+	f = asPath(f)
+	p = f.parent / name
+	if f.suffix=='': return str(p.with_sufix(f.suffix))
+	return str(p)
+
 def print_update(*p):
 	"""Printing this to a terminal erases any text on the current line
 	and then prints whatever arguments are passed, passing <end=''> to
@@ -65,5 +71,5 @@ def filternone(obj, replacement):
 
 __all__ = [
 	'asPath','makepath','makepath_from_file','get_filetype','change_filetype',
-	'print_update','HOMEFOLDER', 'getattrs','filternone'
+	'print_update','HOMEFOLDER', 'getattrs','filternone','with_filename'
 ]

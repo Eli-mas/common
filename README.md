@@ -1,3 +1,3 @@
 # common
 
-Over the course of programming for my [research project](https://github.com/Eli-mas/ResearchProject-RamPressure-EM-JK)/taking CS classes/my own curiosity I have developed a number of routines that are useful to me, or which I think might be useful in general, and this is the dumping ground. If anything here grows sufficently large and is developed into a proper working package of its own, I will fork it and make it separately available.
+Collection of miscellaneous routines that have proven useful in my [research project](https://github.com/Eli-mas/ResearchProject-RamPressure-EM-JK) or other work of mine.

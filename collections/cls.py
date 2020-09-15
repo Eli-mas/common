@@ -1,6 +1,7 @@
 from collections import deque
 from heapq import heapify, heappush, heappop
 from itertools import islice
+from.algo import empty_deque
 
 
 
@@ -24,6 +25,9 @@ class _AbstractOneSidedContainer:
 	def push(self,value):
 		"""Add a new value."""
 		self.d.append(value)
+	
+	def extend(self, values):
+		self.d.extend(values)
 	
 	def is_empty(self):
 		"""Boolean test of emptiness. Equivalent to <not self>."""
@@ -61,7 +65,7 @@ class Queue(_AbstractOneSidedContainer):
 	
 	def peek(self):
 		"""Retrieve, but do not remove, the earliest element added."""
-		return d[0]
+		return self.d[0]
 	
 	def __str__(self):
 		return f"Queue<[{str(self.d)[7:-2]})>"
@@ -109,6 +113,31 @@ class Stack(_AbstractOneSidedContainer):
 		"""Iterator over the stack in standard direction (LIFO),
 		equivalent to 'top_down'."""
 		return reversed(self.d)
+
+class Deque(deque):
+	def filtrate(boolean_callable):
+		"""
+		Generator function: cycle through elements, keeping ones that satisfy
+		the boolean_callable passed, removing and yielding the others.
+		"""
+		for _ in range(len(self)):
+			value = self.popleft()
+			if boolean_callable(value):
+				self.append(value)
+			else:
+				yield value
+	
+	def exfiltrate(boolean_callable):
+		"""
+		Generator function: cycle through elements, keeping ones that do not
+		satisfy the boolean_callable passed, removing and yielding the others.
+		"""
+		for _ in range(len(self)):
+			value = self.popleft()
+			if not boolean_callable(value):
+				self.append(value)
+			else:
+				yield value
 
 class disjoint_chunked:
 	"""Iterate over tuples of a given size constructed from non-overlapping
@@ -210,4 +239,4 @@ class takewhile:
 		for v in self.iterable:
 			yield(v)
 
-__all__ = ('Stack', 'Queue', 'takewhile')
+__all__ = ('Stack', 'Queue', 'takewhile', 'disjoint_chunked', 'windowed_chunked')

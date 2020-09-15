@@ -1,5 +1,6 @@
 from itertools import chain
 import numpy as np
+import re
 
 from ..arrays import make_object_array
 
@@ -93,6 +94,7 @@ class Struct: # extension of https://stackoverflow.com/a/45517161
 	as attributes rather than by dictionary access
 	"""
 	def __init__(self, *aitems, **kitems):
+		self.names = []
 		self.add(*aitems, **kitems)
 
 	def add(self, *aitems, **kitems):
@@ -102,10 +104,24 @@ class Struct: # extension of https://stackoverflow.com/a/45517161
 
 	def _add(self, **items):
 		self.__dict__.update(**items)
+		self.names.extend(items.keys())
 	
 	def addfrom(self, obj, **kwargs):
 		self._add({k:(getattr(obj,v) if isintance(v,str) else v) for k,v in kwargs.items})
 		return self
+	
+	def keys(self):
+		return self.names
+	
+	def values(self, names=None):
+		if names is None: names = self.names
+		return (getattr(self, n) for n in names)
+	
+	def __iter__(self):
+		return ((n, getattr(self, n)) for n in self.names)
+	
+	def get(self, key, value=None):
+		return self.__dict__.get(key, value)
 
 class MultiIterator:
 	"""
@@ -424,5 +440,10 @@ class Proxy:
 	
 	def __len__(self): return len(self.targets)
 
+# class String(str):
+# 	def split_iter(self, splitter):
+# 		if isinstance(splitter, str):
+# 			splitter = re.escape(splitter)
+# 			return (m.group() for m in re.finditer(f'((!({splitter})).)*', self))
 
 __all__ = ('Struct','MultiIterator','NamedMultiIterator','IterDict','Proxy','IterCall')
