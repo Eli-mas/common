@@ -4,32 +4,6 @@ from skimage.util import view_as_windows
 
 from numpy import nan
 
-#from numpy.random import random,randint,choice
-# INITIAL=
-
-"""
-::
-useful material:
-https://stackoverflow.com/questions/13728392/moving-average-or-running-mean
-::
-
-03-01-19:
-	new functions from _test/roll_wrap_nd_tests.py implemented
-	former functions can be found in the prior version from this date
-
-4-14-19:
-	new functions developed relying solely on `view_as_windows` to do rolling
-		cleaner and simpler implementation, and generalizable to n-dimensional cases
-		the former functions worked only up to 2-d cases
-	former functions and the test to check new functions can be found in prior version from this date
-	
-	a template to generalize the rolling algorithm (`rolling_window_template`) is no longer included
-	see again the prior version from this date if it is of interest
-	
-	`padder_for_roll_wrap` and `_rolling_wrap_template` are unchanged,
-		as they are fully compatible with the new functions
-"""
-
 def rolling_sum(ar,half,axis,weights=None,weighter=None,pr=False,squeeze=True):
 	"""
 	Take a rolling sum along a given axis/axes
