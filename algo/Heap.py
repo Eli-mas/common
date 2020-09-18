@@ -264,13 +264,14 @@ if __name__ == '__main__':
 	
 	# very basic tests for the time being
 	hv = np.array([0,5,2,4,3,1,7,6,8,9])
-	for dtype in (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64):
+	dtypes = (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64)
+	for dtype in dtypes:
 		h = Heap(hv.astype(dtype))
 # 		for i in : h.push(i)
 		tuple(h.pop() for _ in range(h.size))
-	for dtype in (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64):
+	for dtype in dtypes:
 		h = Heap(hv.astype(dtype)[:1],empty=True)
-	for dtype in (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64):
+	for dtype in dtypes:
 		h = Heap(hv.astype(dtype))
 # 		for i in : h.push(i)
 # 		print('built heap:', h._array)
