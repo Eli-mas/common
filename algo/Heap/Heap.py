@@ -1,4 +1,8 @@
-"""numba-/numpy-driven implementation of a heap data structure:
+"""NOTE: currently has a bug, do not use until fixed: building an array by
+heapification works as expected, but building a heap by pushing values and then
+emptying the heap results is an unsorted result.
+
+numba-/numpy-driven implementation of a heap data structure:
 a left-complete, binary tree where every parent is <= its children.
 
 'Heap' is actually a factory method that produces an instance of a numba-compiled
@@ -72,7 +76,7 @@ To do:
 	...
 """
 
-from ..common import print_update
+from ...common import print_update
 import numpy as np
 from numba import njit, int_ as nb_int, float_ as nb_float, bool_ as nb_bool
 from numba.experimental import jitclass#,
@@ -149,8 +153,9 @@ class _Heap:
 # 		print('push:',value,'array:',self._array)
 		i = self.size
 		if len(self._array)==self.size:
+# 			print('upsizing')
 			#self.resize_upwards()
-			new = np.zeros(len(self._array)<<1,dtype=self._array.dtype) # a<<1 = a*2
+			new = np.empty(len(self._array)<<1, dtype=self._array.dtype) # a<<1 = a*2
 			new[:self.size] = self._array
 			self._array = new
 # 		print('\tsetting array index',i,'to',value)
@@ -183,9 +188,11 @@ class _Heap:
 		self.size -= 1
 		self._maintain_invariant(0)
 		if self._downsize and (self.size < (len(self._array)>>1)):
-			new = np.zeros(self.size, dtype=self._array.dtype)#
+# 			print('downsizing')
+			"""new = np.empty(self.size, dtype=self._array.dtype)#
 			new[:] = self._array[:self.size]
-			self._array = new
+			self._array = new"""
+			self._array = np.copy(self._array[:self.size])
 		return popped
 	
 	def _heapify(self):
@@ -261,7 +268,7 @@ def heapsort(values):
 
 if __name__ == '__main__':
 	from random import shuffle
-	
+	"""
 	# very basic tests for the time being
 	hv = np.array([0,5,2,4,3,1,7,6,8,9])
 	dtypes = (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64)
@@ -285,6 +292,17 @@ if __name__ == '__main__':
 		popped = h.empty()
 		assert np.array_equal(popped, target), f'expected {target}, got {popped}'
 	
+	for _ in range(10):
+		shuffle(hv)
+		repeat = 1
+		target = np.sort(hv.tolist()*(repeat+1))
+		h = Heap(hv.copy())
+		for _ in range(repeat):
+			for v in hv:
+				h.push(v)
+		popped = h.empty()
+		assert np.array_equal(popped, target), f'expected {target}, got {popped}'
+	
 	for _ in range(3):
 		for values in (list('abcdefghij'),['ab','c','def','g','hij','abcd']):
 			for _ in range(10):
@@ -301,5 +319,23 @@ if __name__ == '__main__':
 			h = Heap(hv)
 			popped = [h.pop() for _ in range(h.size)]
 			assert np.array_equal(popped, target), f'expected {target}, got {popped}'
+	"""
+	print('sorting large arrays')
+	for _ in range(10):
+		values = np.random.randint(0, 1000, 10**6)
+		h = Heap(values.copy())
+		e = h.empty()
+		assert (np.ediff1d(e)>=0).all(), \
+			'large heap built initially: array is not sorted'
+		assert np.array_equal(e, np.sort(values)), \
+			f'large heap built initially: expected:\n{np.sorted(values)}\ngot:\n{e} (size={len(e)})'
+		
+		h = Heap(values[:1],empty=True)
+		for v in values: h.push(v)
+		e = h.empty()
+		assert (np.ediff1d(e)>=0).all(), \ # this is the breaking issue
+		'large heap built by pushing: array is not sorted'
+		assert np.array_equal(e, np.sort(values)), \
+			f'large heap built by pushing: expected:\n{np.sorted(values)}\ngot:\n{e} (size={len(e)})'
 	
 # 	_
