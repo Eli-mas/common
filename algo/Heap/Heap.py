@@ -1,8 +1,4 @@
-"""NOTE: currently has a bug, do not use until fixed: building an array by
-heapification works as expected, but building a heap by pushing values and then
-emptying the heap results is an unsorted result.
-
-numba-/numpy-driven implementation of a heap data structure:
+"""numba-/numpy-driven implementation of a heap data structure:
 a left-complete, binary tree where every parent is <= its children.
 
 'Heap' is actually a factory method that produces an instance of a numba-compiled
@@ -89,13 +85,13 @@ def heapmaker_maker():
 		if data is None:
 			data = np.array([0])
 			# note: this is a bug waiting to happen!
-			# if a character type is passed, this is invalid--have to determine
-			# a workaround
+			# if a character type is passed, this is invalid--
+			# have to determine a workaround
 		else:
 			data = np.asarray(data)
 			data_type = typeof(data)
 		
-		print_update('heapmaker: data_type:',data_type)
+# 		print_update('heapmaker: data_type:',data_type)
 		
 		try:
 			t = heap_types[data_type]
@@ -108,7 +104,7 @@ def heapmaker_maker():
 			t = jitclass(spec)(_Heap)
 			heap_types[data_type] = t
 		
-		print_update('')
+# 		print_update('')
 		
 		return t(data, **kw)
 	
@@ -145,12 +141,13 @@ class _Heap:
 			if size != 1:
 				self._heapify()
 	
-	def push(self, value):
+	def push(self, value, verbose = False):
 		"""Push a value onto the heap, maintaining the heap invariant.
 		Time is O(lg n). Note: if you build a heap from scratch by pushing
 		values repeatedly, the time is O(n*lg n), so you are better off
 		initializing the heap with the data if you can."""
-# 		print('push:',value,'array:',self._array)
+		
+# 		if verbose: print('push: '+str(value)+',','array:',self._array)
 		i = self.size
 		if len(self._array)==self.size:
 # 			print('upsizing')
@@ -158,18 +155,24 @@ class _Heap:
 			new = np.empty(len(self._array)<<1, dtype=self._array.dtype) # a<<1 = a*2
 			new[:self.size] = self._array
 			self._array = new
-# 		print('\tsetting array index',i,'to',value)
 		self._array[i] = value
-# 		print('\tarray after initial assign:',self._array)
+# 		if verbose: print('\tset array index',i,'to '+str(value)+',','array is now',self._array)
+# 		if verbose: print('\tarray after initial assign:',self._array)
 		parent = (i-1)>>1
-# 		print(f'\tparent: index {parent} value {self._array[parent]}')
-		while (parent > 0) and self._array[i]<self._array[parent]:
+# 		if verbose: print(f'\tparent: index {parent}, value {self._array[parent]}\nwhile loop:')
+		
+		# this was a source of a bug: instead of (i>0), code was (parent>0), not correct!
+		while (i > 0) and self._array[i]<self._array[parent]:
 			temp = self._array[i]
+# 			print('\t\ttemp=',temp)
+# 			print(f'\t\tsetting index {i} (current value = {self._array[i]}) to {self._array[parent]}',temp)
 			self._array[i] = self._array[parent]
+# 			print(f'\t\tsetting parent index {parent} (current value = {self._array[parent]}) to {temp}',temp)
 			self._array[parent] = temp
+# 			print(f'\t\tsetting new index i to {parent} and new parent index to {(i-1)>>1}')
 			i = parent
 			parent = (i-1)>>1
-# 			print(f'\tparent: index {parent} value {self._array[parent]}')
+# 			if verbose: print(f'\t\tparent: index {parent} value {self._array[parent]}')
 		self.size += 1
 	
 	def pop(self):
@@ -261,6 +264,40 @@ class _Heap:
 	
 	def __str__(self):
 		return str(self._array[:self.size])
+	
+	def peek(self):
+		return self._array[0]
+	
+	### test methods ###
+	
+	def _maintains_invariant_at_index(self, i):
+		"""Verify that a parent is <= its children"""
+		parent_value = self._array[i]
+		left_index = (i<<1) + 1
+		right_index = (i<<1) + 2
+		if (left_index < self.size) and (parent_value > self._array[left_index]):
+			print('\t!!! parent @ index',i,'> left child @ index', left_index)
+			return False
+		if (right_index < self.size) and (parent_value > self._array[right_index]):
+			print('\t!!! parent @ index',i,'> right child @ index', right_index)
+			return False
+		return True
+	
+	def _maintains_invariant(self):
+		print('\t_maintains_invariant: starting at index', (self.size-1) >> 1, 'and working backwards')
+		for i in range((self.size-1) >> 1, -1, -1):
+			if not self._maintains_invariant_at_index(i):
+				print('\tinvariant broken at index', str(i)+',', 'value', str(self._array[i])+', ',
+# 					  'children {self.get_children(i)}, array {self._array}'
+					  )
+				return False
+		return True
+	
+	"""def get_children(self, i):
+		left_index = (i<<1) + 1
+		right_index = (i<<1) + 2
+		return , \
+			   self._array[right_index] if right_index < self.size else '/'"""
 
 def heapsort(values):
 	"""Sort values via the compiled _Heap class"""
@@ -320,8 +357,27 @@ if __name__ == '__main__':
 			popped = [h.pop() for _ in range(h.size)]
 			assert np.array_equal(popped, target), f'expected {target}, got {popped}'
 	"""
+	
+	h = _Heap(np.array([0]),empty=True)
+	print('push test')
+# 	values = np.arange(20)
+# 	np.random.shuffle(values)
+	values = [7,0,6,1,5,2,4,3]
+	for i,v in enumerate(values):
+		print('pushing',v)
+		h.push(v)
+		if not h._maintains_invariant():
+			print('\nheap invariant broken, starting with a fresh heap and re-pushing values with verbose output')
+			h = _Heap(np.array([0]),empty=True)
+			for _ in range(i+1):
+				h.push(values[_], verbose=True)
+			break
+	
+# 	import sys; sys.exit()
+	
 	print('sorting large arrays')
 	for _ in range(10):
+		print_update(f'trial {_+1}/10: build in place')
 		values = np.random.randint(0, 1000, 10**6)
 		h = Heap(values.copy())
 		e = h.empty()
@@ -330,11 +386,12 @@ if __name__ == '__main__':
 		assert np.array_equal(e, np.sort(values)), \
 			f'large heap built initially: expected:\n{np.sorted(values)}\ngot:\n{e} (size={len(e)})'
 		
+		print_update(f'trial {_+1}/10: build by push')
 		h = Heap(values[:1],empty=True)
 		for v in values: h.push(v)
 		e = h.empty()
-		assert (np.ediff1d(e)>=0).all(), \ # this is the breaking issue
-		'large heap built by pushing: array is not sorted'
+		assert (np.ediff1d(e)>=0).all(), \
+			'large heap built by pushing: array is not sorted'
 		assert np.array_equal(e, np.sort(values)), \
 			f'large heap built by pushing: expected:\n{np.sorted(values)}\ngot:\n{e} (size={len(e)})'
 	
