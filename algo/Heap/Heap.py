@@ -1,5 +1,8 @@
 """numba-/numpy-driven implementation of a heap data structure:
 a left-complete, binary tree where every parent is <= its children.
+For large arrays this is more efficient than Python's native heapq module--
+see Heap_timing.py. For smaller arrays, heapq runs faster, but this could
+change if the time taken to convert arrays to Python lists is factored in.
 
 'Heap' is actually a factory method that produces an instance of a numba-compiled
 class created by calling jitclass on the _Heap class, which implements the heap
