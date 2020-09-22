@@ -158,12 +158,12 @@ class _ArrayMegerHeap:
 		while i!=-1: # return signal to indicate that invariant is ensured
 			i = self.__maintain_invariant(i)
 	
-	def empty(self):
-		"""Pop all values off the heap in sorted order, returning an array"""
-		return np.array([self.pop() for _ in range(self.size)])
-	
-	def __str__(self):
-		return str(self._array[:self.size])
+# 	def empty(self):
+# 		"""Pop all values off the heap in sorted order, returning an array"""
+# 		return np.array([self.pop() for _ in range(self.size)])
+# 	
+# 	def __str__(self):
+# 		return str(self._array[:self.size])
 	
 	def merge(self):
 # 		print('arrays:')
