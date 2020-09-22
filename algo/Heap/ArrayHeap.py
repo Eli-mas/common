@@ -1,3 +1,13 @@
+"""ArrayHeap extends the basic Heap implementation to act on arrays.
+The primary purpose of this module is to support the heap-based merging of sorted
+arrays. Currently the _ArrayMegerHeap class has been tested on ints and floats.
+
+To do:
+    - make a factory meathod as in Heap.py that will compile _ArrayMegerHeap
+	  for differnt input types
+	...
+"""
+
 from numba.experimental import jitclass
 from numba import typed, typeof
 import numba as nb
