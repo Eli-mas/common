@@ -56,23 +56,17 @@ class _ArrayMegerHeap:
 		Time is O(lg n). Note: if you build a heap from scratch by pushing
 		values repeatedly, the time is O(n*lg n), so you are better off
 		initializing the heap with the data if you can."""
-# 		print('push:',value,'array:',self._array)
 		i = self.size
 		if len(self._array)==self.size:
-			#self.resize_upwards()
 			self._array.extend(self._array)
-# 		print('\tsetting array index',i,'to',value)
 		self._array[i] = value
-# 		print('\tarray after initial assign:',self._array)
 		parent_index = (i-1)>>1
-# 		print(f'\tparent: index {parent_index} value {self._array[parent_index]}')
 		while (i > 0) and self._index_lt(i, parent_index):
 			temp = self._array[i]
 			self._array[i] = self._array[parent_index]
 			self._array[parent_index] = temp
 			i = parent_index
 			parent_index = (i-1)>>1
-# 			print(f'\tparent: index {parent_index} value {self._array[parent_index]}')
 		self.size += 1
 	
 	def pop(self):

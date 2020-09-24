@@ -114,11 +114,11 @@ def heapmaker_maker():
 	return heapmaker
 
 Heap = heapmaker_maker()
-spec = {
-	'size': nb_int,
-	'_array': nb_int[::1],
-	'_downsize': nb_bool
-}
+# spec = {
+# 	'size': nb_int,
+# 	'_array': nb_int[::1],
+# 	'_downsize': nb_bool
+# }
 # @jitclass(spec)
 class _Heap:
 	def __init__(self, data, downsize = True, empty=False):
@@ -133,6 +133,14 @@ class _Heap:
 			downsize: bool (optional):
 				whether or not to periodically downsize
 				the array as it is reduced in size by way of the 'pop' method
+			
+			empty: bool (optional):
+				specify true if you want the heap to be empty;
+				due to current design, you still must provide at least
+				a length-1 array to the constructor even if set to True.
+				Providing a larger array than the current data stored
+				can be useful if you know the array will receive more data,
+				so you can prevent some amount of dynamic resizing.
 		"""
 		size = len(data)
 		self._array = data
@@ -141,41 +149,37 @@ class _Heap:
 			self.size=0
 		else:
 			self.size = size
-			if size != 1:
+			if size != 1: # make the array into a heap in place; O(n) time
 				self._heapify()
 	
 	def push(self, value, verbose = False):
 		"""Push a value onto the heap, maintaining the heap invariant.
-		Time is O(lg n). Note: if you build a heap from scratch by pushing
+		Time is O(lg n), amortized in the case where the array has to
+		be enlarged. Note: if you build a heap from scratch by pushing
 		values repeatedly, the time is O(n*lg n), so you are better off
 		initializing the heap with the data if you can."""
 		
-# 		if verbose: print('push: '+str(value)+',','array:',self._array)
+		# heap has n elements, so index (len(heap)-1)+1 = n is the next index
 		i = self.size
 		if len(self._array)==self.size:
-# 			print('upsizing')
-			#self.resize_upwards()
+			# can't push unless the array has room; first,
+			# enlarge the array in a way that has constant amortized-time
 			new = np.empty(len(self._array)<<1, dtype=self._array.dtype) # a<<1 = a*2
 			new[:self.size] = self._array
 			self._array = new
+		# now push
 		self._array[i] = value
-# 		if verbose: print('\tset array index',i,'to '+str(value)+',','array is now',self._array)
-# 		if verbose: print('\tarray after initial assign:',self._array)
 		parent = (i-1)>>1
-# 		if verbose: print(f'\tparent: index {parent}, value {self._array[parent]}\nwhile loop:')
 		
-		# this was a source of a bug: instead of (i>0), code was (parent>0), not correct!
+		# percolate value up the array: while child is less than parent, swap
+		# parent and child, and make the value at the position of the previous
+		# parent the location of the new child
 		while (i > 0) and self._array[i]<self._array[parent]:
 			temp = self._array[i]
-# 			print('\t\ttemp=',temp)
-# 			print(f'\t\tsetting index {i} (current value = {self._array[i]}) to {self._array[parent]}',temp)
 			self._array[i] = self._array[parent]
-# 			print(f'\t\tsetting parent index {parent} (current value = {self._array[parent]}) to {temp}',temp)
 			self._array[parent] = temp
-# 			print(f'\t\tsetting new index i to {parent} and new parent index to {(i-1)>>1}')
 			i = parent
 			parent = (i-1)>>1
-# 			if verbose: print(f'\t\tparent: index {parent} value {self._array[parent]}')
 		self.size += 1
 	
 	def pop(self):
@@ -184,25 +188,38 @@ class _Heap:
 		order."""
 		if self.size == 0:
 			raise ValueError('cannot pop element off empty heap')
+		
+		# top item is minimal item
 		popped = self._array[0]
 		
+		# no reason to do all the work following this block if size is 1
 		if self.size==1:
 			self.size = 0
 			return popped
 		
+		# replace top item with last item; this generally breaks the invariant
 		self._array[0] = self._array[self.size-1]
 		self.size -= 1
+		# the heap invariant has to be restored: O(lg n) time
 		self._maintain_invariant(0)
+		
+		# we can downsize if we want to conserve on memory
 		if self._downsize and (self.size < (len(self._array)>>1)):
 # 			print('downsizing')
 			"""new = np.empty(self.size, dtype=self._array.dtype)#
 			new[:] = self._array[:self.size]
 			self._array = new"""
 			self._array = np.copy(self._array[:self.size])
+		
 		return popped
 	
 	def _heapify(self):
 		"""Build a heap in place in O(n) time."""
+		# Simply ensure that heap invariant is maintained at all indices
+		# starting from the bottommost parents of the heap.
+		# Although _maintain_invariant takes O(n*lg(n)) times in worst case,
+		# not all nodes experience this worst case; summing over all nodes
+		# results in linear time
 		for i in range((self.size-1) >> 1, -1, -1): # a>>1 = a//2
 			self._maintain_invariant(i)
 	
@@ -211,6 +228,9 @@ class _Heap:
 		Note: currently no bounds checking implemented, so you will not be
 		warned if you call an index beyond the heap's size.
 		"""
+		# (i<<1) + 1 gives the index that specifies the left child of the value
+		# at index i if the child exists. If this is beyond the heap's size,
+		# it means that child does not exist, i.e. this is a leaf.
 		return (i<<1) + 1 >= self.size
 	
 	def __maintain_invariant(self, i):
@@ -220,35 +240,36 @@ class _Heap:
 		parent with the lesser of its children), and return the index that
 		received the former parent value. If no swap occurs, return -1 to
 		signify that the invariant was already maintained."""
-# 		print('\t__maintain_invariant: index =',i)
-# 		print('\tarray:',self._array)
+		# since a leaf has no children, by default it maintains the invariant,
+		# so we do not check leaves
 		if not self._isleaf(i):
 			parent_value = self._array[i]
 			left_index = (i<<1) + 1
 			right_index = (i<<1) + 2
 			left_value = self._array[left_index]
 			if right_index == self.size:
+				# a child cannot exist at this value of right_index,
+				# so only check the left child
 				if parent_value>left_value:
+					# swap parent with left child
 					j = left_index
-# 					print('\t\theap inconsistency:',j)
 					temp = self._array[j]
 					self._array[j] = self._array[i]
 					self._array[i] = temp
-# 					print('\t\tarray after swap:',self._array)
 					return j
 			else:
 				right_value = self._array[right_index]
-# 				print(f'\t\tparent (index={i}): {parent_value}, left(index={(i<<1) + 1}) = {left_value}, right(index={(i<<1) + 2}) = {right_value}')
-# 				print('values of parent, left, right:',parent_value, left_value, right_value)
 				if parent_value>left_value or parent_value>right_value:
+					# choose the smaller child to swap with the parent
 					if left_value < right_value: j = left_index
 					else: j = right_index
-# 					print('\t\theap inconsistency:',j)
+					# do the swap
 					temp = self._array[j]
 					self._array[j] = self._array[i]
 					self._array[i] = temp
-# 					print('\t\tarray after swap:',self._array)
 					return j
+		
+		# no swap performed if we get here
 		return -1
 	
 	def _maintain_invariant(self, i):
@@ -256,9 +277,12 @@ class _Heap:
 		Uses an iterative solution rather than a recursive one because
 		(1) it is more efficient anyway and (2) numba (0.5.1) does not yet
 		support re-entrant calls on methods of compiled classes."""
-# 		print('top _maintain_invariant call:',i)
 		
-		while i!=-1: # return signal to indicate that invariant is ensured
+		# iteratively send a value down the heap until it winds
+		# up in a position were it maintains the invariant.
+		# __maintain_invariant returns the new index needing to be checked,
+		# if there is one; otherwise it returns -1.
+		while i!=-1:
 			i = self.__maintain_invariant(i)
 	
 	def empty(self):
@@ -266,9 +290,11 @@ class _Heap:
 		return np.array([self.pop() for _ in range(self.size)])
 	
 	def __str__(self):
+		# I don't think numba actually uses this when this gets compiled?
 		return str(self._array[:self.size])
 	
 	def peek(self):
+		"""Identify but do not pop the minimum value on the heap."""
 		return self._array[0]
 	
 	### test methods ###
@@ -296,6 +322,7 @@ class _Heap:
 				return False
 		return True
 	
+	# not used right now
 	"""def get_children(self, i):
 		left_index = (i<<1) + 1
 		right_index = (i<<1) + 2
@@ -303,12 +330,11 @@ class _Heap:
 			   self._array[right_index] if right_index < self.size else '/'"""
 
 def heapsort(values):
-	"""Sort values via the compiled _Heap class"""
+	"""Sort array of values via the compiled _Heap class"""
 	return Heap(np.asarray(values)).empty()
 
 if __name__ == '__main__':
 	from random import shuffle
-	"""
 	# very basic tests for the time being
 	hv = np.array([0,5,2,4,3,1,7,6,8,9])
 	dtypes = (np.int16, np.int32, np.int64, np.float32, np.float64, np.uint16, np.uint32, np.uint64)
@@ -360,12 +386,13 @@ if __name__ == '__main__':
 			popped = [h.pop() for _ in range(h.size)]
 			assert np.array_equal(popped, target), f'expected {target}, got {popped}'
 	"""
+	"""
 	
 	h = _Heap(np.array([0]),empty=True)
 	print('push test')
 # 	values = np.arange(20)
 # 	np.random.shuffle(values)
-	values = [7,0,6,1,5,2,4,3]
+	values = [7,0,6,1,5,2,4,3] # reverse-sorted tuples
 	for i,v in enumerate(values):
 		print('pushing',v)
 		h.push(v)
