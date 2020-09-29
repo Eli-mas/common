@@ -1,3 +1,17 @@
+"""
+To do:
+	* add two decorators that act in tandem:
+		- one scans the documentation of a function seeking out a pattern,
+		  which it extracts in order to assign some part of the documentation
+		  to a dictionary
+		- another function can read from this dictionary and inject the doc
+		  snippets into the documentation of other functions
+		- it might be worth having functions to be scanned stored somewhere,
+		  and then another function comes along to call the routine that
+		  actually scans these. Useful if a function requests a documentation
+		  snippet that is not yet defined.
+"""
+
 # from functools import partial
 from itertools import chain
 from ..common.funcs import getattrs
