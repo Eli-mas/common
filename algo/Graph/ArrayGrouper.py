@@ -2,9 +2,11 @@
 Label an array as in scipy.ndimage.label, but with extra functionality
 	* Create a containment tree, which sorts labels in order of closeness
 	  to outside the array.
-	* Use different contiguity structures for different values, whether
-	  by explicitly defining them or by providing a callable
-	  (not yet implemented)
+	* Use different contiguity structures for different values in the array.
+
+The standard labeling procedure, which uses the same structure for each value,
+is implemented in ArrayGrouper. To use different structures for different
+values, use ArrayGrouperMultiPattern.
 """
 import numpy as np
 from numpy import inf
@@ -16,6 +18,8 @@ from numba.experimental import jitclass
 
 from common.collections import Queue
 
+from .__ArrayGrouper_functions__ import __functions__
+
 class _ArrayGrouper:
 	"""Label an array of integers and generate a containment tree for it.
 	
@@ -25,6 +29,8 @@ class _ArrayGrouper:
 	This functionality is identical to that provided by scipy.ndimage.label.
 	
 	Where this class adds novel functinoality is in the containment tree.
+	The containment tree indicates the order in which one would encounter
+	groups in the array proceeding inwards from outside the array.
 	A containment tree satisfies the following properties:
 		* It contains each unique generated label only once.
 		* The depth at which a label is contained in this tree is the minimal
@@ -41,7 +47,7 @@ class _ArrayGrouper:
 		  Parents may have multiple children, children may have multiple parents.
 		  Parents may also have no children, but every node at depth>0 has at
 		  least one parent.
-		* It is acyclic, by the above properties.
+		* It is acyclic (as trees are), by the above properties.
 	
 	In order to generate a containment tree, one must have a mapping
 	that tells, for each label in the output, which other labels border it,
@@ -73,64 +79,8 @@ class _ArrayGrouper:
 	namely, an adjacency list (dict of int:array pairs) telling which
 	groups connect to which others, and another mapping telling which
 	groups border the array's outside.
-	
-	*Note* : this class is numba-compiled for efficiency. At the moment,
-	due to the difficulty of creating arbitrarily-nested hash maps, the function
-	that generates the containment tree is not compiled and is contained outside
-	of this class. There are ways to change this, including the creation of a
-	compiled Tree class, or the implicit construction of a containment tree,
-	i.e. , maintaining the above properties. The implicit tree is a
-	simpler option; however, at the moment I have not been able to get numba to
-	compile my implementation of this option, so it is not yet available.
 	"""
-	def _evaluate_symmetric_pattern(self, pattern):
-		"""Evaluate whether a given pattern is centrosymmetric. Used internally."""
-		r,c = pattern.shape
-		
-		if not (r%2) or (c%2):
-			raise ValueError(
-				'pattern is required to have odd dimensions: has dimensions' 
-				+ str(r) + str(c)
-			)
-		
-		# center coordinate of the array
-		center_r, center_c = r//2, c//2
-		
-		# this receives row & column indices if an asymmetry is found
-		error = List.empty_list(int_)
-		
-		# for all rows up to middle rows, scan all columns
-		for i in range(center_r):
-			for j in range(c):
-				if pattern[i,j] != pattern[2*center_r - i, 2*center_c - j]:
-					error.append(i)
-					error.append(j)
-					break
-			else:
-				# if we didn't break, go to the next iteration of the outer loop
-				continue
-			# if we did break, then break outer loop as well
-			break
-		# don't keep scanning if we already found a mismatch
-		if not error:
-			# for middle row, scan only up to before center column
-			for j in range(center_c):
-				if pattern[center_r,j] != pattern[center_r, 2*center_c - j]:
-					error.append(center_r)
-					error.append(j)
-					break
-		if error:
-			i,j = error
-			error_message_pieces = List([
-				'error: pattern not symmetric: p[', str(i),', ',str(j),']:',
-				str(pattern[i,j]),' != ','p[', str(2*center_r - i),
-				', ',str(2*center_c),']:',
-				str(pattern[2*center_r - i, 2*center_c - j])
-			])
-			print(''.join(error_message_pieces))
-			raise ValueError('pattern not symmetric')
-	
-	def __init__(self, array, *, pattern = np.array([[0,1,0],[1,0,1],[0,1,0]]),
+	def __init__(self, array, pattern = np.array([[0,1,0],[1,0,1],[0,1,0]]),
 				 symmetric_pattern = True):
 		"""Initialize an instance with a 2d array of integers.
 		
@@ -148,242 +98,143 @@ class _ArrayGrouper:
 				If True (default), raise ValueError if an asymmetric pattern
 				is provided. If False, do nothing.
 		"""
-		self.array = array
-		self.groups = np.full_like(array, -1) # to hold the label values
+		
+		self.generic_init(array)
+		
+		if symmetric_pattern: self._evaluate_symmetric_pattern(pattern)
+		
 		row,col = pattern.shape
 		assert row == 3 and col == 3, 'pass a 3 x 3 array for `pattern`'
-		self.rows, self.cols = array.shape
 		self.neighbor_searcher = np.array([ # relative coordinates to look for neighbors
 			(i,j) for i in range(row) for j in range(col)
 			if pattern[i][j]
-		]) - np.array([1,1]) # NOTE: this assumes pattern.shape==(3,3)
-		
-		self.counter = 0
-		self.has_been_run = False
-		
-		# mapping <group id: 2-column array where each row is a cell coordinate>
-		# note: we would rather have Set(UniTuple(int_, 2)) for the value type,
-		# but at the moment numba (v0.51.2) rejects with an error:
-		# "set(UniTuple(int64 x 2)) as value is forbidden"
-		bordered_by = {}
-		bordered_by[-1] = np.empty((2,2),int_) # gets numba to infer signature accurately
-		self.bordered_by = bordered_by
-		self.bordered_by.pop(-1)
-		
-		# mapping <group id: the value in self.array that the group refers to>
-		self.group_referenced_values = Dict.empty(int_,int_)
-		
-		# mapping <group id: bool(does the group border the outside of the array?)>
-		self.borders_outside = Dict.empty(int_,bool_)
-		
-		# mapping <group id: unique group_id integers of bordering groups>
-		# can't specify empty Dict here, leads to compilation errors--
-		# presumably a numba issue having to do with the value type being an array
-		self.bordering_groups = {-1:np.empty(0,int_)}
-		self.bordering_groups.pop(-1)
+		]) - np.array([1,1]) # assumes pattern.shape==(3,3)
 	
-	def _borders_outside(self, i, j):
-		"""For a cell at coordinate (i,j), tell whether this cell
-		borders the outside of the array."""
-		return (i==0) or (i==self.rows-1) or (j==0) or (j==self.cols-1)
-	
-	def _get_potential_neighbors(self):
+	def _get_potential_neighbors(self, value=-1):
+		"""For ArrayGrouper, this returns the self.neighbor_searcher."""
+		# why pass a keyword that is not used?
+		# for consistency of the interface on which this class is based,
+		# which becomes important when defining _ArrayGrouperMultiPattern
 		return self.neighbor_searcher
+
+# at the moment, numba does not allow for inheritance in compiled classes
+# the workaround is to assign the common functions to each class before
+# compilation from outside, and define class-specific routines internally
+for name, f in __functions__.items():
+	setattr(_ArrayGrouper, name, f)
+
+# to compile the class, specify type signatures for instance attributes
+ArrayGrouper = jitclass(dict(
+	rows = int_, # integer
+	cols = int_,
+	counter=int_,
+	has_been_run=bool_, # boolean
 	
-	def _neighbors_of_cell(self, ij):
+	array=int_[:, ::1], # C-ordered 2-d integer array
+	groups=int_[:, ::1],
+	neighbor_searcher = int_[:, ::1],
+	
+	borders_outside = DictType(int_, bool_), # dict mapping <int: boolean>
+	group_referenced_values = DictType(int_, int_),
+	
+	bordered_by = DictType(int_, int_[:, ::1]), # dict values can be arrays
+	bordering_groups = DictType(int_, int_[::1])
+))(_ArrayGrouper)
+
+from sys import maxsize
+class _ArrayGrouperMultiPattern:
+	def __init__(self, array, patterns, symmetric_pattern = True,
+				 default_pattern = np.array([[0,1,0],[1,0,1],[0,1,0]])):
+		"""Initialize an instance with a 2d array of integers.
+		
+		Other data structures are created upon intialization.
+		
+		Other parameters:
+			:: pattern (DictType(int_, int[:, ::1])) ::
+				Mapping of integer label values to integer arrays that represent
+				neighbor search patterns, as in the `pattern` argument to the
+				ArrayGrouper class constructor.
+			:: default_pattern (numba.int_[:, ::1]) ::
+				2d array of values to be interpeted in a boolean sense
+				telling, relative to the center coordinate of the array,
+				whether a neighbor should be evaluated for contiguity.
+				Currently only a 3-by-3 array is supported. This pattern
+				applies when a value is found not covered by the `patterns`
+				parameter.
+			:: symmetric_pattern (bool) ::
+				Tells whether the pattern is expected to be symmetric or not
+				about its center (this ensures transitivity of contiguity).
+				If True (default), raise ValueError if an asymmetric pattern
+				is provided. If False, do nothing.
 		"""
-		Get neighbors of cell, both matching and nonmatching,
-		and return together in a 2-column array, where the last
-		row in the array tells the number of nonmatching and matching
-		neighbors.
 		
-		Parameters:
-		:: ij (UniTuple(-int_, 2)) :: coordinate of the cell
-		"""
-		i,j = ij
-		value = self.array[i,j]
-		rows,cols = self.rows, self.cols
-		
-		neighbors = []
-		# for each neighbor, keep a boolean value to tell if its value matches
-		match = List.empty_list(bool_)
-		
-		for r,c in self._get_potential_neighbors():
-			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
-			neighbor_r, neighbor_c = i+r, j+c
+		self.generic_init(array)
+		_neighbor_searchers = {}
+		for v,p in patterns.items():
+			if symmetric_pattern:
+				self._evaluate_symmetric_pattern(p)
 			
-			# ensure coordinate points inside the array
-			if (0<=neighbor_r<self.rows) and (0<=neighbor_c<self.cols):
-				# matching or not, the neighbor is added
-				neighbors.append((neighbor_r, neighbor_c))
-				if self.array[neighbor_r, neighbor_c]==value:
-					match.append(True)
-				else:
-					match.append(False)
+			row, col = p.shape
+			assert (row, col) == (3, 3), 'pass a 3 x 3 array for each pattern'
+			_neighbor_searchers[v] = np.array([ # relative coordinates to look for neighbors
+				(i,j) for i in range(row) for j in range(col)
+				if p[i][j]
+			]) - np.array([1,1]) # assumes p.shape==(3,3)
 		
-		return neighbors, match
+		self.neighbor_searchers = _neighbor_searchers
+		
+		if symmetric_pattern:
+			self._evaluate_symmetric_pattern(default_pattern)
+		assert default_pattern.shape==(3,3), 'pass a 3 x 3 array for default_pattern'
+		self.default_neighbor_searcher = np.array([
+			(i,j) for i in range(row) for j in range(col)
+			if default_pattern[i][j]
+		]) - np.array([1,1]) # assumes default_pattern.shape==(3,3)
 	
-	def _find_group_and_neighbors(self, i, j):
-		"""Determine and associate the group for a cell at coordinate (i,j).
-		This operation mutates the instance's internal data structures."""
-		
-		# -1 means cell has not yet been evaluated; anything else means it has
-		if self.groups[i,j] != -1:
-			return
-		
-		value = self.array[i,j]
-		
-		# stack is efficiently implemented as a list, so go this route
-		stack = List([(i,j)])
-		
-		# set of matching cells; to start, include the input cell by default
-		matching = set([(i,j)])
-		nonmatching = set([(-1,-1)]) # allows numba to auto-detect signature
-		nonmatching.remove((-1,-1))
-		
-		# DFS traversal to find contiguous, matching cells
-		# at the end of this loop, matching contains all members of this group,
-		# and nonmatching contains all the unique neighbor cells of this group
-		while len(stack)!=0:
-			current = stack.pop()
-			neighbors, match = self._neighbors_of_cell(current)
-			for n,m in zip(neighbors,match):
-				if m:
-					# here we have to check explicitly, because the stack
-					# only receives the cell if it is not already present
-					if n not in matching:
-						matching.add(n)
-						stack.append(n)
-				else:
-					# here we don't have to check explicitly--the .add method
-					# handles both cases when cell is or is not present
-					nonmatching.add(n)
-		
-		# self.counter increments for each new group
-		group_id = self.counter
-		
-		# set the label (group id) for all cells
-		for i,j in matching:
-			self.groups[i,j] = group_id
-		
-		# convert to arrays to match signature
-		self.bordered_by[group_id] = np.array(list(nonmatching), dtype=int_)
-		# 'value' is the value in the original array, 'group_id' is the label
-		self.group_referenced_values[group_id] = value
-		
-		# find whether or not this group borders the array's outside
-		for i,j in matching:
-			if self._borders_outside(i,j):
-				# all we need is one outer cell to yield True
-				self.borders_outside[group_id] = True
-				break
-		else:
-			# only get here if we didn't break out of the above loop
-			self.borders_outside[group_id] = False
-		
-		self.counter += 1
+	def _get_potential_neighbors(self, value, absent = np.array([[maxsize],[maxsize]])):
+		"""Get the neighbor searcher for the value passed. If the value
+		is not defined in self.neighbor_searchers, return
+		self.default_neighbor_searcher."""
+		ns = self.neighbor_searchers.get(value, absent)
+		if ns[0,0] == maxsize:
+			return self.default_neighbor_searcher
+		return ns
 	
-	def label(self):
-		"""Given the instance's input array, find its labeled array:
-		find all contiguous groups in the array (as done by scipy.ndimage.label),
-		but also generate data structures required to make a containment
-		tree from the labeled array (not provided by scipy's function).
-		"""
-		# associate every cell with a group, caching results along the way
-		# to maintain linear time complexity
-		for i in range(self.rows):
-			for j in range(self.cols):
-				self._find_group_and_neighbors(i,j)
-		
-		# now we get the unique labels that border each group
-		for group_id, neighbors_array in self.bordered_by.items():
-			s = set([-1]) # numba type signature determination
-			s.pop()
-			# get unique labels that border current group
-			for i,j in neighbors_array:
-				s.add(self.groups[i,j])
-			
-			self.bordering_groups[group_id] = np.array(list(s))
-		
-		# mark the iteration as complete
-		self.has_been_run = True
+for name, f in __functions__.items():
+	setattr(_ArrayGrouperMultiPattern, name, f)
+
+ArrayGrouperMultiPattern = jitclass(dict(
+	rows = int_,
+	cols = int_,
+	counter=int_,
+	has_been_run=bool_
 	
-	def generate_implicit_tree(self):
-		"""Generate an implicit tree for the labeled array. See the class
-		documentation for details of what is returned."""
-		if not self.has_been_run:
-			raise RuntimeError('cannot generate tree before instance has been processed')
-		
-		tree = {} # mapping <label: array of labels with one-greater depth>
-		outer = np.array( # the outer groups comprise the top level of the tree
-			[group_id for group_id, b in self.borders_outside.items() if b],
-			dtype=int_
-		)
-		tree[-1] = outer
-		
-		# keep track of what not to add to the queue
-		visited = Dict.empty(int_, int_)
-		
-		# q functions as a queue;
-		# the fact that it is a queue, not a stack, is important
-		q=set(outer)
-		
-		# top-level depth = 0 by definition
-		depth = 0
-		
-		while q:
-			for label in q:
-				visited[label] = depth
-			
-			# `new` holds labels at the next depth that are discovered below
-			new = set([-1]) # numba type signature detection
-			new.remove(-1)
-			
-			# temp = List.empty_list(int_) # this doesn't work
-			#     NotImplementedError: ListType[int64] cannot be represented as a Numpy dtype
-			
-			# `temp` stores new labels discovered at the next depth
-			# ultimately, these will be added to the queue
-			temp = [-1] # workaround
-			temp.pop()
-			
-			# for each label in q, get its children labels and assign them
-			# to 'new' so that they can go into q for the next while iteration
-			for label in q:
-				for neighboring_label in self.bordering_groups[label]:
-					value = (neighboring_label in visited)
-# 					if n not in visited: # numba bug? This doesn't work
-					
-					# we add the value to the queue in two cases:
-					
-					# case 1: the value has not been seen before
-					if value==False:
-						temp.append(neighboring_label)
-					# case 2: the value has been seen and has a greater depth.
-					# In this case, it will still only be evaluated once as
-					# a member of q, because each level (depth) of the tree
-					# is processed one at a time.
-					elif visited[neighboring_label] > depth:
-						temp.append(neighboring_label)
-				
-				# for this label, assign its children as the value in the tree
-				tree[label] = np.array(temp, dtype=int_)
-				# temp contains children of the current node, which are all at
-				# the next depth level, so add them to 'new'
-				new.update(temp)
-				# clear the list so it can be reused,
-				# rather than create a new list at each iteration
-				temp.clear()
-			# 'new' contains the labels at the next depth level, so assign to q
-			q = new
-			depth+=1
-			
-		return tree
+	array=int_[:, ::1],
+	groups=int_[:, ::1],
+	
+	borders_outside = DictType(int_, bool_),
+	group_referenced_values = DictType(int_, int_),
+	
+	default_neighbor_searcher = int_[:, ::1],
+	bordered_by = DictType(int_, int_[:, ::1]),
+	bordering_groups = DictType(int_, int_[::1]),
+	neighbor_searchers = DictType(int_, int_[:, ::1]),
+))(_ArrayGrouperMultiPattern)
+
+
+
+
+
+
+
+
 
 def generate_tree(self, depthwise = True, breadthwise = True):
 	"""Generate an explicit containment tree representing the structure
-	of a labeled array contained by an ArrayGrouper instance. See the
-	documentation for that class for details of what this function returns."""
+	of a labeled array contained by an array grouper instance. See the
+	documentation for that class for details of what this function returns.
+	ArrayGrouper and ArrayGrouperMultiPattern follow the same interface,
+	so this method works for instances of either class."""
 	if not self.has_been_run:
 		raise RuntimeError('cannot generate tree before instance has been processed')
 	
@@ -416,7 +267,7 @@ def generate_tree(self, depthwise = True, breadthwise = True):
 				continue
 			
 			# if the label was not already visited, make a new dict for it,
-			#add it to the queue, and record it as visited
+			# add it to the queue, and record it as visited
 			d = {}
 			children_dict[c] = d
 			q.push((c, depth+1, d))
@@ -427,25 +278,9 @@ def generate_tree(self, depthwise = True, breadthwise = True):
 	# -1 points to the top level of the tree
 	return visited[-1][1]
 
-ArrayGrouper = jitclass(dict(
-	rows = int_,
-	cols = int_,
-	neighbor_searcher = int_[:, ::1],
-	bordered_by = DictType(int_, int_[:, ::1]),
-	group_referenced_values = DictType(int_, int_),
-	borders_outside = DictType(int_, bool_),
-	bordering_groups = DictType(int_, int_[::1]),
-	array=int_[:, ::1],
-	groups=int_[:, ::1],
-	counter=int_,
-	has_been_run=bool_
-))(_ArrayGrouper)
-
-_ArrayGrouperMultiPattern = type
-
 if __name__ == '__main__':		
-	def test_array(array, display=False, verbose=False):
-		g = ArrayGrouper(array)
+	def test_array(array, display=False, verbose=False, cls = ArrayGrouper, **kw):
+		g = cls(array, **kw)
 		
 		if display:
 			print('array:')
@@ -468,34 +303,114 @@ if __name__ == '__main__':
 		
 		return g, tree, implicit_tree
 	
-	array = np.array(
-			[[1, 1, 3, 3],
-			 [1, 0, 0, 3],
-			 [3, 2, 2, 1],
-			 [3, 3, 1, 1]])
+	if True: # ArrayGrouper tests
+		array = np.array(
+				[[1, 1, 3, 3],
+				 [1, 0, 0, 3],
+				 [3, 2, 2, 1],
+				 [3, 3, 1, 1]])
+		
+		g, tree, implicit_tree = test_array(array)
+		assert tree == {0:{2:{}}, 1:{2:{}}, 3:{4:{}}, 5:{4:{}}}
+		assert {g:set(c) for g,c in implicit_tree.items()} == \
+			{-1:{0,1,3,5}, 0:{2,}, 1:{2,}, 3:{4,}, 5:{4,}, 2:set(), 4:set()}
+		
+		# print((',\n'.join(f'[{", "*8}]' for _ in range(8))))
+		array = np.array(
+				[[0, 0, 0, 0, 0, 1, 2, 3, 1],
+				 [0, 0, 0, 0, 1, 1, 2, 3, 1],
+				 [0, 0, 0, 1, 1, 2, 2, 3, 1],
+				 [0, 0, 4, 4, 2, 2, 3, 3, 1],
+				 [0, 0, 5, 0, 0, 3, 3, 3, 1],
+				 [6, 6, 6, 6, 0, 7, 7, 7, 1],
+				 [7, 7, 7, 8, 0, 8, 8, 8, 1],
+				 [9, 9, 9, 8, 8, 8, 1, 1, 1]])
+		
+		g, tree, implicit_tree = test_array(array)
+		assert tree == {
+			# level 0
+			0:{5:{}, 6:{}}, 1:{5:{}}, 2:{5:{}, 7:{}}, 3:{7:{}, 9:{}}, 4:{9:{}},
+			# level 1
+			8:{6:{}, 7:{}}, 10:{}, 11:{7:{}, 9:{}}, 12:{}
+		}
+		assert {g:set(c) for g,c in implicit_tree.items()} == {
+			-1:{0,1,2,3,4,8,10,11,12}, # depth = -1
+			0:{5,6}, 1:{5,}, 2:{5,7}, 3:{7,9}, 4:{9,}, # depth = 0
+				8:{6,7}, 10:set(), 11:{7,9}, 12:set(),
+			5:set(), 6:set(), 7:set(), 9:set() # depth = 1
+		}
 	
-	g, tree, implicit_tree = test_array(array)
-	assert tree == {0:{2:{}}, 1:{2:{}}, 3:{4:{}}, 5:{4:{}}}
-	assert {g:set(c) for g,c in implicit_tree.items()} == {-1:{0,1,3,5}, 0:{2,}, 1:{2,}, 3:{4,}, 5:{4,}, 2:set(), 4:set()}
+	if True: # ArrayGrouperMultiPattern tests
+		four_way_pattern = np.array([[0,1,0],[1,0,1],[0,1,0]])
+		eight_way_pattern = np.array([[1,1,1],[1,0,1],[1,1,1]])
+		
+		array = np.array(
+				[[1, 1, 0, 0],
+				 [1, 1, 0, 0],
+				 [0, 0, 1, 1],
+				 [0, 0, 1, 1]])
+		
+		patterns = Dict(dcttype=DictType(int_, int_[:,::1]))
+		patterns[0], patterns[1] = four_way_pattern, eight_way_pattern
+		
+# 		print('patterns:',patterns)
+		g, tree, implicit_tree = test_array(
+			array, cls = ArrayGrouperMultiPattern,
+			patterns = patterns
+		)
+		assert np.array_equal(
+			g.groups,
+			np.array([[0,0,1,1],[0,0,1,1],[2,2,0,0],[2,2,0,0]])
+		)
+		
+		assert tree == {0:{}, 1:{}, 2:{}}
+		assert {g:set(c) for g,c in implicit_tree.items()} == \
+			{-1:{0,1,2}, 0:set(), 1:set(), 2:set()}
+		
+		patterns[0] = eight_way_pattern
+		array = np.array(
+				[[0, 2, 0, 0, 2],
+				 [1, 0, 2, 2, 0],
+				 [0, 1, 0, 2, 0],
+				 [0, 1, 1, 0, 2],
+				 [1, 0, 0, 1, 0]])
+		
+		for i in range(3):
+			if i==0:
+				kw, patterns[2] = {} , four_way_pattern
+			elif i==1:
+				kw['default_pattern'] = four_way_pattern
+				del patterns[2]
+			elif i==2:
+				kw['default_pattern'] = eight_way_pattern
+			g, tree, implicit_tree = test_array(
+				array, cls = ArrayGrouperMultiPattern,
+				patterns = patterns, **kw
+			)
+			if i<2:
+				assert np.array_equal(g.groups,
+						[[0, 1, 0, 0, 2],
+						 [3, 0, 4, 4, 0],
+						 [0, 3, 0, 4, 0],
+						 [0, 3, 3, 0, 5],
+						 [3, 0, 0, 3, 0]]
+				)
+				assert tree == {0:{4:{}}, 1:{}, 2:{}, 3:{4:{}}, 5:{}}, str(tree)
+				"""this is an interesting case: 3 reports 4 as being a child, but
+				4 would not report 3 as being a parent, because 4's definition of contiguity
+				is different than 3's, and from 4 one cannot jump to three, though from 3 one
+				may jump to 4. What to do about such cases--anything? """
+				assert {g:set(c) for g,c in implicit_tree.items()} == \
+					{-1:{0,1,2,3,5}, 0:{4,}, 1:set(()), 2:set(()), 3:{4,}, 4:set(()), 5:set(())}
+			elif i==2:
+				assert np.array_equal(g.groups,
+						[[0, 1, 0, 0, 1],
+						 [2, 0, 1, 1, 0],
+						 [0, 2, 0, 1, 0],
+						 [0, 2, 2, 0, 1],
+						 [2, 0, 0, 2, 0]]
+				)
+				assert tree == {0:{}, 1:{}, 2:{}}, str(tree)
+				assert {g:set(c) for g,c in implicit_tree.items()} == \
+					{-1:{0,1,2}, 0:set(()), 1:set(()), 2:set(())}
 	
-	# print((',\n'.join(f'[{", "*8}]' for _ in range(8))))
-	array = np.array(
-			[[0, 0, 0, 0, 0, 1, 2, 3, 1],
-			 [0, 0, 0, 0, 1, 1, 2, 3, 1],
-			 [0, 0, 0, 1, 1, 2, 2, 3, 1],
-			 [0, 0, 4, 4, 2, 2, 3, 3, 1],
-			 [0, 0, 5, 0, 0, 3, 3, 3, 1],
-			 [6, 6, 6, 6, 0, 7, 7, 7, 1],
-			 [7, 7, 7, 8, 0, 8, 8, 8, 1],
-			 [9, 9, 9, 8, 8, 8, 1, 1, 1]])
-	
-	g, tree, implicit_tree = test_array(array)
-	assert tree == {
-		0:{5:{}, 6:{}}, 1:{5:{}}, 2:{5:{}, 7:{}}, 3:{7:{}, 9:{}}, 4:{9:{}},
-		8:{6:{}, 7:{}}, 10:{}, 11:{7:{}, 9:{}}, 12:{}
-	}
-	assert {g:set(c) for g,c in implicit_tree.items()} == {
-		-1:{0,1,2,3,4,8,10,11,12},
-		0:{5,6}, 1:{5,}, 2:{5,7}, 3:{7,9}, 4:{9,}, 8:{6,7}, 10:set(), 11:{7,9}, 12:set(),
-		5:set(), 6:set(), 7:set(), 9:set()
-	}
