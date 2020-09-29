@@ -16,20 +16,7 @@ from numba.experimental import jitclass
 
 from common.collections import Queue
 
-@jitclass(dict(
-	rows = int_,
-	cols = int_,
-	neighbor_searcher = int_[:, ::1],
-	bordered_by = DictType(int_, int_[:, ::1]),
-	group_referenced_values = DictType(int_, int_),
-	borders_outside = DictType(int_, bool_),
-	bordering_groups = DictType(int_, int_[::1]),
-	array=int_[:, ::1],
-	groups=int_[:, ::1],
-	counter=int_,
-	has_been_run=bool_
-))
-class ArrayGrouper:
+class _ArrayGrouper:
 	"""Label an array of integers and generate a containment tree for it.
 	
 	To label an array means to identify all the contiguous groups of that array
@@ -200,7 +187,8 @@ class ArrayGrouper:
 		borders the outside of the array."""
 		return (i==0) or (i==self.rows-1) or (j==0) or (j==self.cols-1)
 	
-# 	def _find_groups_2d(array):
+	def _get_potential_neighbors(self):
+		return self.neighbor_searcher
 	
 	def _neighbors_of_cell(self, ij):
 		"""
@@ -220,7 +208,7 @@ class ArrayGrouper:
 		# for each neighbor, keep a boolean value to tell if its value matches
 		match = List.empty_list(bool_)
 		
-		for r,c in self.neighbor_searcher:
+		for r,c in self._get_potential_neighbors():
 			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
 			neighbor_r, neighbor_c = i+r, j+c
 			
@@ -391,7 +379,7 @@ class ArrayGrouper:
 			depth+=1
 			
 		return tree
-	
+
 def generate_tree(self, depthwise = True, breadthwise = True):
 	"""Generate an explicit containment tree representing the structure
 	of a labeled array contained by an ArrayGrouper instance. See the
@@ -438,6 +426,22 @@ def generate_tree(self, depthwise = True, breadthwise = True):
 	self.bordering_groups.pop(-1)
 	# -1 points to the top level of the tree
 	return visited[-1][1]
+
+ArrayGrouper = jitclass(dict(
+	rows = int_,
+	cols = int_,
+	neighbor_searcher = int_[:, ::1],
+	bordered_by = DictType(int_, int_[:, ::1]),
+	group_referenced_values = DictType(int_, int_),
+	borders_outside = DictType(int_, bool_),
+	bordering_groups = DictType(int_, int_[::1]),
+	array=int_[:, ::1],
+	groups=int_[:, ::1],
+	counter=int_,
+	has_been_run=bool_
+))(_ArrayGrouper)
+
+_ArrayGrouperMultiPattern = type
 
 if __name__ == '__main__':		
 	def test_array(array, display=False, verbose=False):
