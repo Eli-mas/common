@@ -207,7 +207,7 @@ ArrayGrouperMultiPattern = jitclass(dict(
 	rows = int_,
 	cols = int_,
 	counter=int_,
-	has_been_run=bool_
+	has_been_run=bool_,
 	
 	array=int_[:, ::1],
 	groups=int_[:, ::1],
@@ -218,7 +218,7 @@ ArrayGrouperMultiPattern = jitclass(dict(
 	default_neighbor_searcher = int_[:, ::1],
 	bordered_by = DictType(int_, int_[:, ::1]),
 	bordering_groups = DictType(int_, int_[::1]),
-	neighbor_searchers = DictType(int_, int_[:, ::1]),
+	neighbor_searchers = DictType(int_, int_[:, ::1])
 ))(_ArrayGrouperMultiPattern)
 
 
