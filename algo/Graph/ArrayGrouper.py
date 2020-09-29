@@ -1,3 +1,11 @@
+"""
+Label an array as in scipy.ndimage.label, but with extra functionality
+	* Create a containment tree, which sorts labels in order of closeness
+	  to outside the array.
+	* Use different contiguity structures for different values, whether
+	  by explicitly defining them or by providing a callable
+	  (not yet implemented)
+"""
 import numpy as np
 from numpy import inf
 from numba import njit, typed, types
@@ -5,6 +13,8 @@ from numba.typed import List, Dict
 from numba.types import UniTuple, ListType, DictType
 from numba import int_, bool_
 from numba.experimental import jitclass
+
+from common.collections import Queue
 
 @jitclass(dict(
 	rows = int_,
@@ -54,9 +64,22 @@ class ArrayGrouper:
 	dynamically so that it is immediately available upon completion of the
 	labeling process.
 	
-	At the moment the containment tree is returned as an arbitarily nested
-	dict: a dict whose keys are labels and whose values are dicts, in turn
-	whose keys are labels and whose values are dicts, and so on.
+	At the moment the containment tree may be generated in two ways:
+		* implicitly: a flat dictionary where each key in the dict (a label)
+		  points to a conntainer of other keys (labels) in the dict, such that
+		  the pointers do not violate the aforementioned properties of the
+		  containment tree. Because the structure of this tree is fully known
+		  at compile time, this functionality is implemented as a compiled
+		  method on this class; see the 'generate_implicit_tree' method.
+		* explicitly: the tree is returned as nested dicts, where dict keys
+		  are integers representing label nodes and dict values are dicts
+		  representing children of the respective labels. Because of numba
+		  type-inference issues, this is not compiled, and therefore is not
+		  a method of this class; the module-level function `generate_tree`
+		  can be called on an instance to achieve this. Note, since each label
+		  exists only once in the tree, if two different labels point to a
+		  common child label, they will point to the same dictionary objects
+		  in memory.
 	
 	If you do not want the containment tree, this class also allows for
 	retrieving the intermediary data structures used to compute it:
@@ -69,8 +92,7 @@ class ArrayGrouper:
 	that generates the containment tree is not compiled and is contained outside
 	of this class. There are ways to change this, including the creation of a
 	compiled Tree class, or the implicit construction of a containment tree,
-	i.e. a flat dictionary where each key in the dict points to an array of other
-	keys in the dict, maintaining the above properties. The implicit tree is a
+	i.e. , maintaining the above properties. The implicit tree is a
 	simpler option; however, at the moment I have not been able to get numba to
 	compile my implementation of this option, so it is not yet available.
 	"""
@@ -84,8 +106,10 @@ class ArrayGrouper:
 				+ str(r) + str(c)
 			)
 		
+		# center coordinate of the array
 		center_r, center_c = r//2, c//2
 		
+		# this receives row & column indices if an asymmetry is found
 		error = List.empty_list(int_)
 		
 		# for all rows up to middle rows, scan all columns
@@ -123,6 +147,8 @@ class ArrayGrouper:
 				 symmetric_pattern = True):
 		"""Initialize an instance with a 2d array of integers.
 		
+		Other data structures are created upon intialization.
+		
 		Other parameters:
 			:: pattern (numba.int_[:, ::1]) ::
 				2d array of values to be interpeted in a boolean sense
@@ -136,11 +162,11 @@ class ArrayGrouper:
 				is provided. If False, do nothing.
 		"""
 		self.array = array
-		self.groups = np.full_like(array, -1)
+		self.groups = np.full_like(array, -1) # to hold the label values
 		row,col = pattern.shape
 		assert row == 3 and col == 3, 'pass a 3 x 3 array for `pattern`'
 		self.rows, self.cols = array.shape
-		self.neighbor_searcher = np.array([
+		self.neighbor_searcher = np.array([ # relative coordinates to look for neighbors
 			(i,j) for i in range(row) for j in range(col)
 			if pattern[i][j]
 		]) - np.array([1,1]) # NOTE: this assumes pattern.shape==(3,3)
@@ -148,18 +174,26 @@ class ArrayGrouper:
 		self.counter = 0
 		self.has_been_run = False
 		
-		bordered_by = {} # group id: 2-column array where each row is a cell coordiante
+		# mapping <group id: 2-column array where each row is a cell coordinate>
+		# note: we would rather have Set(UniTuple(int_, 2)) for the value type,
+		# but at the moment numba (v0.51.2) rejects with an error:
+		# "set(UniTuple(int64 x 2)) as value is forbidden"
+		bordered_by = {}
 		bordered_by[-1] = np.empty((2,2),int_) # gets numba to infer signature accurately
 		self.bordered_by = bordered_by
 		self.bordered_by.pop(-1)
 		
-		self.group_referenced_values = Dict.empty(int_,int_) # group id: the value in self.array that the group refers to
-		self.borders_outside = Dict.empty(int_,bool_) # group id: bool(does the group border the outside of the array?)
+		# mapping <group id: the value in self.array that the group refers to>
+		self.group_referenced_values = Dict.empty(int_,int_)
 		
-		bordering_groups = {} # group id: unique group_id integers of bordering groups
-		bordering_groups[-1] = np.empty(0,int_) # gets numba to infer signature accurately
-		self.bordering_groups = bordering_groups
-		bordering_groups.pop(-1)
+		# mapping <group id: bool(does the group border the outside of the array?)>
+		self.borders_outside = Dict.empty(int_,bool_)
+		
+		# mapping <group id: unique group_id integers of bordering groups>
+		# can't specify empty Dict here, leads to compilation errors--
+		# presumably a numba issue having to do with the value type being an array
+		self.bordering_groups = {-1:np.empty(0,int_)}
+		self.bordering_groups.pop(-1)
 	
 	def _borders_outside(self, i, j):
 		"""For a cell at coordinate (i,j), tell whether this cell
@@ -174,76 +208,92 @@ class ArrayGrouper:
 		and return together in a 2-column array, where the last
 		row in the array tells the number of nonmatching and matching
 		neighbors.
+		
+		Parameters:
+		:: ij (UniTuple(-int_, 2)) :: coordinate of the cell
 		"""
 		i,j = ij
 		value = self.array[i,j]
 		rows,cols = self.rows, self.cols
-		match=List.empty_list(bool_)
+		
 		neighbors = []
+		# for each neighbor, keep a boolean value to tell if its value matches
+		match = List.empty_list(bool_)
+		
 		for r,c in self.neighbor_searcher:
+			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
 			neighbor_r, neighbor_c = i+r, j+c
-# 			print('neighbor_r, neighbor_c:',neighbor_r, neighbor_c)
+			
+			# ensure coordinate points inside the array
 			if (0<=neighbor_r<self.rows) and (0<=neighbor_c<self.cols):
+				# matching or not, the neighbor is added
 				neighbors.append((neighbor_r, neighbor_c))
 				if self.array[neighbor_r, neighbor_c]==value:
-# 					print('\tmatch')
 					match.append(True)
 				else:
-# 					print('\tno match')
 					match.append(False)
-# 			else:
-# 				print('\tnot evaluated')
 		
 		return neighbors, match
 	
 	def _find_group_and_neighbors(self, i, j):
 		"""Determine and associate the group for a cell at coordinate (i,j).
 		This operation mutates the instance's internal data structures."""
+		
+		# -1 means cell has not yet been evaluated; anything else means it has
 		if self.groups[i,j] != -1:
 			return
 		
 		value = self.array[i,j]
 		
+		# stack is efficiently implemented as a list, so go this route
 		stack = List([(i,j)])
 		
+		# set of matching cells; to start, include the input cell by default
 		matching = set([(i,j)])
-		nonmatching = set([(-1,-1)])
+		nonmatching = set([(-1,-1)]) # allows numba to auto-detect signature
 		nonmatching.remove((-1,-1))
 		
+		# DFS traversal to find contiguous, matching cells
+		# at the end of this loop, matching contains all members of this group,
+		# and nonmatching contains all the unique neighbor cells of this group
 		while len(stack)!=0:
 			current = stack.pop()
 			neighbors, match = self._neighbors_of_cell(current)
 			for n,m in zip(neighbors,match):
-# 				print('value:',value,'neighbor:',n,'is a match:',m)
 				if m:
+					# here we have to check explicitly, because the stack
+					# only receives the cell if it is not already present
 					if n not in matching:
-# 						print('value:',value,'adding neighbor to matching:',n,'value matches:',value==self.array[n[0],n[1]])
 						matching.add(n)
 						stack.append(n)
 				else:
-					if n not in nonmatching:
-# 						print('value:',value,'adding neighbor to nonmatching:',n)
-						nonmatching.add(n)
+					# here we don't have to check explicitly--the .add method
+					# handles both cases when cell is or is not present
+					nonmatching.add(n)
 		
+		# self.counter increments for each new group
 		group_id = self.counter
 		
-# 		print('value:',value,'matching:',matching)
+		# set the label (group id) for all cells
 		for i,j in matching:
 			self.groups[i,j] = group_id
 		
-		self.bordered_by[group_id] = np.array(list(nonmatching))
+		# convert to arrays to match signature
+		self.bordered_by[group_id] = np.array(list(nonmatching), dtype=int_)
+		# 'value' is the value in the original array, 'group_id' is the label
 		self.group_referenced_values[group_id] = value
 		
+		# find whether or not this group borders the array's outside
 		for i,j in matching:
 			if self._borders_outside(i,j):
+				# all we need is one outer cell to yield True
 				self.borders_outside[group_id] = True
 				break
 		else:
+			# only get here if we didn't break out of the above loop
 			self.borders_outside[group_id] = False
 		
 		self.counter += 1
-	
-	# def _crawl_wall(array, row, col, direction_of_outside):
 	
 	def label(self):
 		"""Given the instance's input array, find its labeled array:
@@ -251,108 +301,142 @@ class ArrayGrouper:
 		but also generate data structures required to make a containment
 		tree from the labeled array (not provided by scipy's function).
 		"""
+		# associate every cell with a group, caching results along the way
+		# to maintain linear time complexity
 		for i in range(self.rows):
 			for j in range(self.cols):
 				self._find_group_and_neighbors(i,j)
 		
-		# at this point we have filled in all cells in self.groups
-		# with the group of that cell (an integer identifier)
-		# we also have a list of neighbors that border each group
-		# so now get the unique groups that border each group
-		
+		# now we get the unique labels that border each group
 		for group_id, neighbors_array in self.bordered_by.items():
-			s = set([-1])
+			s = set([-1]) # numba type signature determination
 			s.pop()
+			# get unique labels that border current group
 			for i,j in neighbors_array:
 				s.add(self.groups[i,j])
 			
 			self.bordering_groups[group_id] = np.array(list(s))
 		
+		# mark the iteration as complete
 		self.has_been_run = True
 	
 	def generate_implicit_tree(self):
-		# tree = Dict.empty(int_, int_[::1])
-		tree = {}
-		outer = np.array([group_id for group_id, b in self.borders_outside.items() if b], dtype=int_)
+		"""Generate an implicit tree for the labeled array. See the class
+		documentation for details of what is returned."""
+		if not self.has_been_run:
+			raise RuntimeError('cannot generate tree before instance has been processed')
+		
+		tree = {} # mapping <label: array of labels with one-greater depth>
+		outer = np.array( # the outer groups comprise the top level of the tree
+			[group_id for group_id, b in self.borders_outside.items() if b],
+			dtype=int_
+		)
 		tree[-1] = outer
+		
+		# keep track of what not to add to the queue
 		visited = Dict.empty(int_, int_)
-# 		visited = {}
-# 		visited[-1] = -1
+		
+		# q functions as a queue;
+		# the fact that it is a queue, not a stack, is important
 		q=set(outer)
+		
+		# top-level depth = 0 by definition
 		depth = 0
+		
 		while q:
-# 			print('q:',q)
-# 			print('\tvisited:',visited,0 in visited)
-			for g in q:
-# 				print('\tsetting depth for', g)
-				visited[g] = depth
-			new = set([-1])
+			for label in q:
+				visited[label] = depth
+			
+			# `new` holds labels at the next depth that are discovered below
+			new = set([-1]) # numba type signature detection
 			new.remove(-1)
 			
-			# temp = List.empty_list(int_)
-			temp = [-1]
+			# temp = List.empty_list(int_) # this doesn't work
+			#     NotImplementedError: ListType[int64] cannot be represented as a Numpy dtype
+			
+			# `temp` stores new labels discovered at the next depth
+			# ultimately, these will be added to the queue
+			temp = [-1] # workaround
 			temp.pop()
-			for g in q:
-# 				print('\tgetting children for', g)
-				for n in self.bordering_groups[g]:
-					value = (n in visited)
-# 					print('\t\tn:',n,value)
+			
+			# for each label in q, get its children labels and assign them
+			# to 'new' so that they can go into q for the next while iteration
+			for label in q:
+				for neighboring_label in self.bordering_groups[label]:
+					value = (neighboring_label in visited)
 # 					if n not in visited: # numba bug? This doesn't work
+					
+					# we add the value to the queue in two cases:
+					
+					# case 1: the value has not been seen before
 					if value==False:
-# 						print('\t\t\tvalue is False')
-# 						print('\t\t\t'+str(n)+' not in visited')
-						temp.append(n)
-# 					elif value==True:
-# 						print('value is True')
-					elif visited[n] > depth:
-						temp.append(n)
-				tree[g] = np.array(temp, dtype=int_)
+						temp.append(neighboring_label)
+					# case 2: the value has been seen and has a greater depth.
+					# In this case, it will still only be evaluated once as
+					# a member of q, because each level (depth) of the tree
+					# is processed one at a time.
+					elif visited[neighboring_label] > depth:
+						temp.append(neighboring_label)
+				
+				# for this label, assign its children as the value in the tree
+				tree[label] = np.array(temp, dtype=int_)
+				# temp contains children of the current node, which are all at
+				# the next depth level, so add them to 'new'
 				new.update(temp)
+				# clear the list so it can be reused,
+				# rather than create a new list at each iteration
 				temp.clear()
+			# 'new' contains the labels at the next depth level, so assign to q
 			q = new
 			depth+=1
-# 			break
+			
 		return tree
 	
 def generate_tree(self, depthwise = True, breadthwise = True):
-	from common.collections import Queue
+	"""Generate an explicit containment tree representing the structure
+	of a labeled array contained by an ArrayGrouper instance. See the
+	documentation for that class for details of what this function returns."""
 	if not self.has_been_run:
-		return
+		raise RuntimeError('cannot generate tree before instance has been processed')
 	
+	# placeholder that makes computational flow simpler
+	# -1 points to values bordering the outside
 	self.bordering_groups[-1] = np.array([group_id for group_id, b in self.borders_outside.items() if b])
 	if not depthwise:
 		# return a plain graph as an adjacency list
 		return {group_id:set(neighbors) for group_id, neighbors in self.bordering_groups.items()}
 	
-	s = Queue()
+	# use a queue to process one level at a time
+	q = Queue()
 	children_dict = {}
-	s.push((-1, 0, children_dict)) # group_id, depth, children dictionary
+	q.push((-1, 0, children_dict)) # group_id, depth, children dictionary
 	visited = {-1:(0, children_dict)} # map <group_id: depth in tree, children dictionary for group_id>
-	_inf = [inf]
-	while s:
-		group_id, depth, children_dict = s.pop()
+	
+	default = (None, None)
+	while q:
+		group_id, depth, children_dict = q.pop()
 		children_ids = (g for g in self.bordering_groups[group_id])
-# 		print(f'group_id = {group_id}, depth={depth}')
-# 		print('\tneighbors:',self.bordering_groups[group_id])
-# 		print('\tdepths:',[visited.get(n, _inf)[0] for n in self.bordering_groups[group_id]])
-# 		print('\tchildren:')
 		for c in children_ids:
-			if c in visited:
-				if visited[c][0] > depth:
-# 					print(f'\t\t{c} ALREADY VISITED')
-					children_dict[c] = visited[c][1]
-# 				else:
-# 					print(f'\t\t{c} NOT A CHILD')
+			# check to see if this label has already been visited
+			cdepth, cdict = visited.get(c, default)
+			# if so...
+			if cdepth is not None:
+				# only add as a child of current label if the depth is right
+				if cdepth > depth:
+					children_dict[c] = cdict
+				# continue either way since the label was already visited
 				continue
 			
-# 			print(f'\t\t{c}')
+			# if the label was not already visited, make a new dict for it,
+			#add it to the queue, and record it as visited
 			d = {}
 			children_dict[c] = d
-			s.push((c, depth+1, d))
+			q.push((c, depth+1, d))
 			visited[c] = (depth+1, d)
-# 		print('\tchildren_dict:',children_dict)
 	
+	# remove the nonce group we added earlier
 	self.bordering_groups.pop(-1)
+	# -1 points to the top level of the tree
 	return visited[-1][1]
 
 if __name__ == '__main__':		
