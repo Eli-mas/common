@@ -311,6 +311,10 @@ if __name__ == '__main__':
 				 [3, 3, 1, 1]])
 		
 		g, tree, implicit_tree = test_array(array)
+		assert np.array_equal(
+			g.groups,
+			np.array([[0,0,1,1],[0,2,2,1],[3,4,4,5],[3,3,5,5]])
+		), f'\n{g.groups}'
 		assert tree == {0:{2:{}}, 1:{2:{}}, 3:{4:{}}, 5:{4:{}}}
 		assert {g:set(c) for g,c in implicit_tree.items()} == \
 			{-1:{0,1,3,5}, 0:{2,}, 1:{2,}, 3:{4,}, 5:{4,}, 2:set(), 4:set()}
@@ -327,6 +331,17 @@ if __name__ == '__main__':
 				 [9, 9, 9, 8, 8, 8, 1, 1, 1]])
 		
 		g, tree, implicit_tree = test_array(array)
+		assert np.array_equal(
+			g.groups,
+				[[0,   0,  0,  0,  0,  1,  2, 3,  4],
+				 [0,   0,  0,  0,  1,  1,  2, 3,  4],
+				 [0,   0,  0,  1,  1,  2,  2, 3,  4],
+				 [0,   0,  5,  5,  2,  2,  3, 3,  4],
+				 [0,   0,  6,  7,  7,  3,  3, 3,  4],
+				 [8,   8,  8,  8,  7,  9,  9, 9,  4],
+				 [10, 10, 10, 11, 7,  11, 11, 11, 4],
+				 [12, 12, 12, 11, 11, 11,  4, 4,  4]]
+		), f'\n{g.groups}'
 		assert tree == {
 			# level 0
 			0:{5:{}, 6:{}}, 1:{5:{}}, 2:{5:{}, 7:{}}, 3:{7:{}, 9:{}}, 4:{9:{}},
@@ -339,6 +354,17 @@ if __name__ == '__main__':
 				8:{6,7}, 10:set(), 11:{7,9}, 12:set(),
 			5:set(), 6:set(), 7:set(), 9:set() # depth = 1
 		}
+		
+		array = np.array(
+				[[1, 1, 1, 1],
+				 [1, 1, 1, 1],
+				 [1, 1, 1, 1],
+				 [1, 1, 1, 1]])
+		g, tree, implicit_tree = test_array(array)
+		assert np.array_equal(g.groups, np.zeros_like(array)), f'\n{g.groups}'
+		assert tree == {0:{}}
+		assert {g:set(c) for g,c in implicit_tree.items()} == \
+			{-1:{0}, 0:set(())}
 	
 	if True: # ArrayGrouperMultiPattern tests
 		four_way_pattern = np.array([[0,1,0],[1,0,1],[0,1,0]])
@@ -394,7 +420,7 @@ if __name__ == '__main__':
 						 [0, 3, 0, 4, 0],
 						 [0, 3, 3, 0, 5],
 						 [3, 0, 0, 3, 0]]
-				)
+				), f'\n{g.groups}'
 				assert tree == {0:{4:{}}, 1:{}, 2:{}, 3:{4:{}}, 5:{}}, str(tree)
 				"""this is an interesting case: 3 reports 4 as being a child, but
 				4 would not report 3 as being a parent, because 4's definition of contiguity

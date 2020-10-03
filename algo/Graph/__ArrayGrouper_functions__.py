@@ -260,8 +260,14 @@ def _find_group_and_neighbors(self, i, j):
 	
 	self.borders_outside[group_id] = borders_outside
 	
-	# convert to arrays to match signature
-	self.bordered_by[group_id] = np.array(list(nonmatching), dtype=int_)
+	# normally we wouldn't have to do this check, because taking list()
+	# of an empty set would make an empty list; but numba
+	# raises an IndexError if `nonmatching` is empty
+	if len(nonmatching) != 0:
+		# convert to arrays to match signature
+		self.bordered_by[group_id] = np.array(list(nonmatching), dtype=int_)
+	else:
+		self.bordered_by[group_id] = np.empty((0,0), dtype=int_)
 	# 'value' is the value in the original array, 'group_id' is the label
 	self.group_referenced_values[group_id] = value
 	
