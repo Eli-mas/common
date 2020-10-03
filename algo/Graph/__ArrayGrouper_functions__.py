@@ -86,6 +86,7 @@ def _borders_outside(self, i, j):
 	borders the outside of the array."""
 	return (i==0) or (i==self.rows-1) or (j==0) or (j==self.cols-1)
 
+'''
 def _neighbors_of_cell(self, ij, neighbor_searcher):
 	"""
 	Get neighbors of cell, both matching and nonmatching,
@@ -118,7 +119,7 @@ def _neighbors_of_cell(self, ij, neighbor_searcher):
 				match.append(False)
 	
 	return neighbors, match
-
+'''
 def _find_group_and_neighbors(self, i, j):
 	"""Determine and associate the group for a cell at coordinate (i,j).
 	This operation mutates the instance's internal data structures."""
@@ -181,6 +182,91 @@ def _find_group_and_neighbors(self, i, j):
 	
 	self.counter += 1
 
+def _search_with_border_check(self, group_id, value, neighbor_searcher, stack, nonmatching, borders_outside):
+	"""DFS traversal to find contiguous, matching cells.
+	Short-circuits in the case that one of the cells is found to
+	border the array outside."""
+	while (len(stack)!=0) and (not borders_outside):
+		i,j = stack.pop()
+		for r,c in neighbor_searcher:
+			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
+			neighbor_r, neighbor_c = i+r, j+c
+		
+			# ensure coordinate points inside the array
+			if (0<=neighbor_r<self.rows) and (0<=neighbor_c<self.cols):
+				# matching or not, the neighbor is added
+				if self.array[neighbor_r, neighbor_c]==value:
+					if self.groups[neighbor_r, neighbor_c]!=group_id:
+						stack.append((neighbor_r, neighbor_c))
+						self.groups[neighbor_r, neighbor_c] = group_id
+						if self._borders_outside(i,j):
+							borders_outside = True
+				else:
+					nonmatching.add((neighbor_r, neighbor_c))
+	return borders_outside
+
+def _search(self, group_id, value, neighbor_searcher, stack, nonmatching):
+	"""DFS traversal to find contiguous, matching cells.
+	Does not check whether cells border outside because this has
+	already been handled by `_search_with_border_check`."""
+	while len(stack)!=0:
+		i,j = stack.pop()
+		for r,c in neighbor_searcher:
+			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
+			neighbor_r, neighbor_c = i+r, j+c
+			
+			# ensure coordinate points inside the array
+			if (0<=neighbor_r<self.rows) and (0<=neighbor_c<self.cols):
+				# matching or not, the neighbor is added
+				if self.array[neighbor_r, neighbor_c]==value:
+					if self.groups[neighbor_r, neighbor_c]!=group_id:
+						stack.append((neighbor_r, neighbor_c))
+						self.groups[neighbor_r, neighbor_c] = group_id
+				else:
+					nonmatching.add((neighbor_r, neighbor_c))
+
+def _find_group_and_neighbors(self, i, j):
+	"""Determine and associate the group for a cell at coordinate (i,j).
+	This operation mutates the instance's internal data structures."""
+	
+	# -1 means cell has not yet been evaluated; anything else means it has
+	if self.groups[i,j] != -1:
+		return
+	
+	value = self.array[i,j]
+	
+	# self.counter increments for each new group
+	group_id = self.counter
+	
+	# stack is efficiently implemented as a list, so go this route
+	stack = List([(i,j)])
+	
+	# set of matching cells; to start, include the input cell by default
+	nonmatching = set([(-1,-1)]) # allows numba to auto-detect signature
+	nonmatching.remove((-1,-1))
+	
+	neighbor_searcher = self._get_potential_neighbors(value)
+	
+	borders_outside = self._search_with_border_check(
+		group_id, value, neighbor_searcher, stack, nonmatching,
+		self._borders_outside(i,j)
+	)
+	self._search(group_id, value, neighbor_searcher, stack, nonmatching)
+	# by this point, all members of this group have had the
+	# group_id assigned to the respective cells in self.groups,
+	# and nonmatching contains all the unique neighbor cells of this group
+	
+	self.groups[i,j] = group_id
+	
+	self.borders_outside[group_id] = borders_outside
+	
+	# convert to arrays to match signature
+	self.bordered_by[group_id] = np.array(list(nonmatching), dtype=int_)
+	# 'value' is the value in the original array, 'group_id' is the label
+	self.group_referenced_values[group_id] = value
+	
+	self.counter += 1
+
 def label(self):
 	"""Given the instance's input array, find its labeled array:
 	find all contiguous groups in the array (as done by scipy.ndimage.label),
@@ -228,8 +314,12 @@ def generate_implicit_tree(self):
 	
 	# top-level depth = 0 by definition
 	depth = 0
-	
+# 	print('generate_implicit_tree in progress:')
+# 	print('self.bordering_groups:', self.bordering_groups)
+# 	print('outer:', outer)
+# 	print('self.groups:'); print(self.groups)
 	while q:
+# 		print('generate_implicit_tree: while loop')
 		for label in q:
 			visited[label] = depth
 		
@@ -248,6 +338,7 @@ def generate_implicit_tree(self):
 		# for each label in q, get its children labels and assign them
 		# to 'new' so that they can go into q for the next while iteration
 		for label in q:
+# 			print('while>second for: label:', label)
 			for neighboring_label in self.bordering_groups[label]:
 				value = (neighboring_label in visited)
 # 					if n not in visited: # numba bug? This doesn't work
@@ -282,7 +373,9 @@ __functions__ = {
 	'generic_init': generic_init,
 	'_evaluate_symmetric_pattern': _evaluate_symmetric_pattern,
 	'_borders_outside': _borders_outside,
-	'_neighbors_of_cell': _neighbors_of_cell,
+# 	'_neighbors_of_cell': _neighbors_of_cell,
+	'_search_with_border_check': _search_with_border_check,
+	'_search': _search,
 	'_find_group_and_neighbors': _find_group_and_neighbors,
 	'label': label,
 	'generate_implicit_tree': generate_implicit_tree

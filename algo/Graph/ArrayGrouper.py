@@ -414,3 +414,5 @@ if __name__ == '__main__':
 				assert {g:set(c) for g,c in implicit_tree.items()} == \
 					{-1:{0,1,2}, 0:set(()), 1:set(()), 2:set(())}
 	
+	import os
+	print(f'{__package__}.{os.path.basename(__file__)[:-3]}: assertions complete')
