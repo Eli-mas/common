@@ -12,18 +12,18 @@ The novel functionality provided here is in the containment tree. The containmen
 * Parents may have multiple children, children may have multiple parents. Parents may also have no children, but every node beneath the topmost level has at least one parent.
 
 For example, if we have the following array:
-![sample array 1](imgs/sample array 1.png)
+![sample array 1](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20array%201.png)
 The groups are computed as follows:
-![sample groups 1](imgs/sample groups 1.png)
+![sample groups 1](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20groups%201.png)
 And the containment tree is:
-![sample groups 1](imgs/sample containment tree 1.png)
+![sample groups 1](imgs/https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%201.png)
 
 A somewhat more complex eaxmple: an array is given as
-![sample array 2](imgs/sample array 2.png)
+![sample array 2](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20array%202.png)
 The groups are computed as follows:
-![sample groups 2](imgs/sample groups 2.png)
+![sample groups 2](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20groups%202.png)
 And the containment tree is:
-![sample groups 2](imgs/sample containment tree 2.png)
+![sample groups 2](imgs/https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%202.png)
 
 The `ArrayGrouper` class allows for specifying a single pattern that tells what cells may be considered neighbors of a given cell. The `ArrayGrouperMultiPattern` class allows for specifying different patterns for particular values, as well as a default pattern. The meaning of 'pattern' here is identical to the `structure` parameter passed to [`scipy.ndimage.label`].
 
