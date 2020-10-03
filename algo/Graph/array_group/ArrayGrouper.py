@@ -303,6 +303,32 @@ if __name__ == '__main__':
 		
 		return g, tree, implicit_tree
 	
+	from pygraphviz import AGraph
+	from seaborn import heatmap
+	import matplotlib.pyplot as plt
+	from common.collections import consume
+	from common import makepath
+	
+	def drawer():
+		counter = [1]
+		def draw_tree(g, tree, implicit_tree):
+			implicit_tree = implicit_tree.copy()
+			implicit_tree.pop(-1)
+			implicit_tree = {k:{v:None for v in s} for k,s in implicit_tree.items()}
+# 			print('draw_graph: implicit_tree:',implicit_tree,sep='\n')
+			a = AGraph(implicit_tree)
+			a.layout('dot')
+# 			print(a.to_string())
+			p = makepath(__file__[:__file__.rfind("/")+1]+'imgs/')
+			a.draw(p+f'sample containment tree {counter[0]}.png')
+			for a, name in ((array, 'array'), (g.groups, 'groups')):
+				ax = heatmap(a, annot=True, xticklabels=(), yticklabels=(), cbar=False, square=True)
+				plt.savefig(p+f'sample {name} {counter[0]}.png')
+				plt.close()
+			counter[0]+=1
+		return draw_tree
+	draw_tree = drawer()
+	
 	if True: # ArrayGrouper tests
 		array = np.array(
 				[[1, 1, 3, 3],
@@ -354,6 +380,7 @@ if __name__ == '__main__':
 				8:{6,7}, 10:set(), 11:{7,9}, 12:set(),
 			5:set(), 6:set(), 7:set(), 9:set() # depth = 1
 		}
+		draw_tree(g, tree, implicit_tree)
 		
 		array = np.array(
 				[[1, 1, 1, 1],
@@ -366,6 +393,34 @@ if __name__ == '__main__':
 		assert {g:set(c) for g,c in implicit_tree.items()} == \
 			{-1:{0}, 0:set(())}
 	
+		array = np.array(
+				[[5, 0, 0, 0, 0, 0, 0, 1, 1],
+				 [5, 6, 6, 7, 8, 8, 8, 8, 1],
+				 [5, 4, 3, 3, 3, 2, 2, 9, 1],
+				 [5, 4, 2, 0, 1, 1, 2, 9, 1],
+				 [4, 5, 2, 0, 0, 1, 2, 9, 1],
+				 [4, 6, 2, 3, 3, 3, 3, 9, 1],
+				 [4, 7, 7, 7, 7, 8, 8, 8, 2],
+				 [4, 3, 3, 3, 3, 3, 2, 2, 2]])
+		g, tree, implicit_tree = test_array(array)
+		t = {11:{}, 12:{}}
+		t = {7:t, 8:{12:t[12]}, 10:{11:t[11]}, 16:t}
+		t = {3:{7:t[7]}, 6:{7:t[7], 10:t[10]}, 4:{7:t[7]}, 5:{7:t[7], 8:t[8]},
+			 9:{16:t[16], 8:t[8]}, 14:{10:t[10]}, 15:{10:t[10]}, 18:{16:t[16]},
+			 17:{10:t[10], 16:t[16]}}
+		t = {0:{3:t[3], 6:t[6]}, 1:{3:t[3], 4:t[4], 5:t[5]}, 2:{5:t[5], 9:t[9]},
+			 13:{14:t[14], 15:t[15], 17:t[17]}, 19:{18:t[18]},
+			 20:{18:t[18], 17:t[17]}}
+		print(g.groups)
+		assert tree==t, f'tree:\n{tree}\nt\n{t}'
+		assert {g:set(c) for g,c in implicit_tree.items()} == {
+			-1:{0,1,2,13,19,20}, 0:{3,6}, 1:{3,4,5}, 2:{5,9}, 13:{14,15,17},
+			 19:{18,}, 20:{17,18}, 3:{7,}, 6:{7,10}, 4:{7,}, 5:{7,8},
+			 9:{8,16}, 14:{10,}, 15:{10,}, 18:{16,}, 17:{10,16}, 7:{11,12},
+			 8:{12,}, 10:{11,}, 16:{11,12}, 11:set(()), 12:set(())
+		}, str(implicit_tree)
+		draw_tree(g, tree, implicit_tree)
+		
 	if True: # ArrayGrouperMultiPattern tests
 		four_way_pattern = np.array([[0,1,0],[1,0,1],[0,1,0]])
 		eight_way_pattern = np.array([[1,1,1],[1,0,1],[1,1,1]])

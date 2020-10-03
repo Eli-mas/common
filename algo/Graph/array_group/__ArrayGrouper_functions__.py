@@ -320,10 +320,6 @@ def generate_implicit_tree(self):
 	
 	# top-level depth = 0 by definition
 	depth = 0
-# 	print('generate_implicit_tree in progress:')
-# 	print('self.bordering_groups:', self.bordering_groups)
-# 	print('outer:', outer)
-# 	print('self.groups:'); print(self.groups)
 	while q:
 # 		print('generate_implicit_tree: while loop')
 		for label in q:
@@ -336,15 +332,14 @@ def generate_implicit_tree(self):
 		# temp = List.empty_list(int_) # this doesn't work
 		#     NotImplementedError: ListType[int64] cannot be represented as a Numpy dtype
 		
-		# `temp` stores new labels discovered at the next depth
-		# ultimately, these will be added to the queue
 		temp = [-1] # workaround
 		temp.pop()
+		# `temp` stores new labels discovered at the next depth
+		# ultimately, these will be added to the queue
 		
 		# for each label in q, get its children labels and assign them
 		# to 'new' so that they can go into q for the next while iteration
 		for label in q:
-# 			print('while>second for: label:', label)
 			for neighboring_label in self.bordering_groups[label]:
 				value = (neighboring_label in visited)
 # 					if n not in visited: # numba bug? This doesn't work
