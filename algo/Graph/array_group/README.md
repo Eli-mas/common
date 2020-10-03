@@ -21,7 +21,7 @@ The groups are computed as follows:
 
 And the containment tree is:
 
-![sample groups 1](imgs/https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%201.png)
+![sample groups 1](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%201.png)
 
 A somewhat more complex eaxmple: an array is given as
 
@@ -33,7 +33,7 @@ The groups are computed as follows:
 
 And the containment tree is:
 
-![sample groups 2](imgs/https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%202.png)
+![sample groups 2](https://github.com/Eli-mas/common/blob/master/algo/Graph/array_group/imgs/sample%20containment%20tree%202.png)
 
 The `ArrayGrouper` class allows for specifying a single pattern that tells what cells may be considered neighbors of a given cell. The `ArrayGrouperMultiPattern` class allows for specifying different patterns for particular values, as well as a default pattern. The meaning of 'pattern' here is identical to the `structure` parameter passed to [`scipy.ndimage.label`].
 
