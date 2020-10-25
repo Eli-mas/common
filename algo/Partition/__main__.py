@@ -50,7 +50,7 @@ def partition_on_value(data, sep, start=0, end=-1):
 	
 	return last_low
 
-@njit
+# @njit
 def collect_forwards(array, start=0, end=-1):
 	"""Partition an array into values == array[start], values != array[start].
 	
@@ -94,7 +94,7 @@ def collect_forwards(array, start=0, end=-1):
 	
 	return last_equal
 
-#@njit
+# @njit
 def collect_backwards(array, start, end):
 	"""Partition an array into values != array[end], values == array[end].
 	
@@ -130,7 +130,7 @@ def find_median(data, expect_repeat_median = False):
 	at each iteration, leading to O(n) runtime; this occurs when the data are
 	uniformly distributed.
 	
-	TODO: In a naive implementation of this algorithm, a set of data with the same
+	In a naive implementation of this algorithm, a set of data with the same
 	value n times (e.g. [1,1,1,1,1, ...]) would take Θ(n^2) time; the same
 	holds for any array where the median of the array repeats O(n) times.
 	This implementation contains logic to ensure that this case is handled in
@@ -138,6 +138,26 @@ def find_median(data, expect_repeat_median = False):
 	and is not desirable if the number of repeats of any value is on average
 	expected to be rather low; so it is disabled by default. To enable it,
 	set `expect_repeat_median` to True.
+	
+	TODO: the logic of checking for repeat values encounters a problem in the
+	'collect_backwards' function when 'collect_forwards' is njit-compiled.
+	Specifically, numba reports the view array[::-1] as being readonly,
+	although when collect_backwards is not run with njit compilation,
+	it reports view.flags.writeable = True. The result is that the functions
+	work but cannot be compiled--not acceptable for peformance.
+	Possible solutions:
+		* Prevent the array from becoming read-only
+		  (seems internal to numba, so might not be an option)
+		* Rewrite 'collect_backwards' to avoid taking a view, meaning it has to
+		  implement the full logic explicitly--undesirable if avoidable.
+		* Extend 'partition_on_value' to include an option for handling
+		  the logic of 'collect_backwards' and 'collect_forwards' itself:
+		  it can call itself with the `sep` parameter being set to data[i]
+		  and the bounds being chosen appropriately.
+		  OR call 'partition_on_value' separately within 'find_median' to
+		  handle this behavior.
+		  This seems like the most desirable option--it removes the need for
+		  separate 'collect_backwards' and 'collect_forwards' routines.
 	"""
 	target_i = len(data)//2
 	
