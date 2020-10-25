@@ -188,6 +188,11 @@ def _search_with_border_check(self, group_id, value, neighbor_searcher, stack, n
 	border the array outside."""
 	while (len(stack)!=0) and (not borders_outside):
 		i,j = stack.pop()
+		if self._borders_outside(i,j):
+			# any element on the stack is part of this group;
+			# we can evaluate this the moment an element comes off the stack
+			borders_outside = True
+		
 		for r,c in neighbor_searcher:
 			# neighbor_searcher gives relative coordinates; add to get cell coordiantes
 			neighbor_r, neighbor_c = i+r, j+c
@@ -199,11 +204,10 @@ def _search_with_border_check(self, group_id, value, neighbor_searcher, stack, n
 					if self.groups[neighbor_r, neighbor_c]!=group_id:
 						stack.append((neighbor_r, neighbor_c))
 						self.groups[neighbor_r, neighbor_c] = group_id
-						if self._borders_outside(i,j):
-							borders_outside = True
 				else:
 					nonmatching.add((neighbor_r, neighbor_c))
-	return borders_outside
+	
+	self.borders_outside[group_id] = borders_outside
 
 def _search(self, group_id, value, neighbor_searcher, stack, nonmatching):
 	"""DFS traversal to find contiguous, matching cells.
@@ -247,7 +251,9 @@ def _find_group_and_neighbors(self, i, j):
 	
 	neighbor_searcher = self._get_potential_neighbors(value)
 	
-	borders_outside = self._search_with_border_check(
+	self.groups[i,j] = group_id
+	
+	self._search_with_border_check(
 		group_id, value, neighbor_searcher, stack, nonmatching,
 		self._borders_outside(i,j)
 	)
@@ -255,10 +261,6 @@ def _find_group_and_neighbors(self, i, j):
 	# by this point, all members of this group have had the
 	# group_id assigned to the respective cells in self.groups,
 	# and nonmatching contains all the unique neighbor cells of this group
-	
-	self.groups[i,j] = group_id
-	
-	self.borders_outside[group_id] = borders_outside
 	
 	# normally we wouldn't have to do this check, because taking list()
 	# of an empty set would make an empty list; but numba

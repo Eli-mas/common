@@ -278,6 +278,7 @@ def generate_tree(self, depthwise = True, breadthwise = True):
 	# -1 points to the top level of the tree
 	return visited[-1][1]
 
+__all__ = ('ArrayGrouper', 'ArrayGrouperMultiPattern', 'generate_tree')
 if __name__ == '__main__':		
 	def test_array(array, display=False, verbose=False, cls = ArrayGrouper, **kw):
 		g = cls(array, **kw)
@@ -303,7 +304,8 @@ if __name__ == '__main__':
 		
 		return g, tree, implicit_tree
 	
-	from pygraphviz import AGraph
+	from .util import *
+	"""from pygraphviz import AGraph
 	from seaborn import heatmap
 	import matplotlib.pyplot as plt
 	from common.collections import consume
@@ -327,7 +329,7 @@ if __name__ == '__main__':
 				plt.close()
 			counter[0]+=1
 		return draw_tree
-	draw_tree = drawer()
+	draw_tree = drawer()"""
 	
 	if True: # ArrayGrouper tests
 		array = np.array(
@@ -380,7 +382,7 @@ if __name__ == '__main__':
 				8:{6,7}, 10:set(), 11:{7,9}, 12:set(),
 			5:set(), 6:set(), 7:set(), 9:set() # depth = 1
 		}
-		draw_tree(g, tree, implicit_tree)
+		draw_tree(g, array, implicit_tree)
 		
 		array = np.array(
 				[[1, 1, 1, 1],
@@ -419,7 +421,7 @@ if __name__ == '__main__':
 			 9:{8,16}, 14:{10,}, 15:{10,}, 18:{16,}, 17:{10,16}, 7:{11,12},
 			 8:{12,}, 10:{11,}, 16:{11,12}, 11:set(()), 12:set(())
 		}, str(implicit_tree)
-		draw_tree(g, tree, implicit_tree)
+		draw_tree(g, array, implicit_tree)
 		
 	if True: # ArrayGrouperMultiPattern tests
 		four_way_pattern = np.array([[0,1,0],[1,0,1],[0,1,0]])
