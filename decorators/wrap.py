@@ -43,7 +43,16 @@ def add_doc(*referent_functions, __add_doc_template = __add_doc_template):
 		return function
 	return _add_doc
 
-__all__ = ('add_doc',)
+def assign(names_values_mapping):
+	"""Given a mapping (dict-like object) of names to values,
+	return a function that assigns these values to an object
+	when the object is passed to that function."""
+	def _assign(object):
+		consume(setattr(object, name, value)
+				for name, value in names_values_mapping.items())
+	return _assign
+
+__all__ = ('add_doc','assign')
 
 if __name__ == '__main__':
 	def a():

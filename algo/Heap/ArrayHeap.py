@@ -9,12 +9,14 @@ To do:
 """
 
 from numba.experimental import jitclass
-from numba import typed, typeof
-import numba as nb
-from numba import types
+from numba import typed, typeof, int_
+from numba.types import ListType
 import numpy as np
+from common.decorators import assign
 
+from .__ArrayHeap_functions__ import __functions__
 
+@assign(__functions__)
 class _ArrayHeap:
 	# These next few methods mark the difference between the basic heap
 	# and the heap of arrays: assigning order of heap elements is based
@@ -23,15 +25,25 @@ class _ArrayHeap:
 	# In place of 'self._array[i] < self._array[j]', we use
 	# self._index_lt(i, j), or self._element_lt(self._array[i], self._array[j])
 	def _element_lt(self, element1, element2):
+		"""Return whether a given array compares less than another array,
+		with the comparison defined by comparison of first elements."""
 		return element1[0] < element2[0]
 	
 	def _index_lt(self, index1, index2):
+		"""Return whether the array at a given index compares less than the
+		array at another index, with the comparison defined by comparison of
+		first elements."""
 		return self._array[index1][0] < self._array[index2][0]
 	
 	def _element_gt(self, element1, element2):
+		"""Return whether a given array compares greater than another array,
+		with the comparison defined by comparison of first elements."""
 		return element1[0] > element2[0]
 	
 	def _index_gt(self, index1, index2):
+		"""Return whether the array at a given index compares greater than the
+		array at another index, with the comparison defined by comparison of
+		first elements."""
 		return self._array[index1][0] > self._array[index2][0]
 	
 	"""def _array_lt(self, arr1, arr2):
@@ -45,140 +57,6 @@ class _ArrayHeap:
 			if arr1[i] > arr2[i]:
 				return True
 		return False"""
-	
-	def __init__(self, data, downsize = True, empty=False):#k=1, 
-		"""Initialize the heap, possibly with data.
-		Parameters:
-			data: <compatible with numba.int_[:]>: (optional):
-				container of values; if provided, it will be heapified,
-				after being copied to a numpy array, in O(n) time. Otherwise,
-				heap is initially empty (actually it has one element, but
-				the heap does not know it is there).
-			
-			downsize: bool (optional):
-				whether or not to periodically downsize
-				the array as it is reduced in size by way of the 'pop' method
-		"""
-		size = len(data)
-		self._array = data
-# 		self._array.extend(data)
-		self._downsize = downsize
-		if empty:
-			self.size=0
-		else:
-			self.size = size
-			if size != 1:
-				self._heapify()
-	
-	def push(self, value):
-		"""Push a value onto the heap, maintaining the heap invariant.
-		Time is O(lg n). Note: if you build a heap from scratch by pushing
-		values repeatedly, the time is O(n*lg n), so you are better off
-		initializing the heap with the data if you can."""
-		i = self.size
-		# resize array if needed
-		if len(self._array)==self.size:
-			self._array.extend(self._array)
-		
-		# add the value to the end to start
-		self._array[i] = value
-		
-		# now percolate it up to the extent required: repeatedly swap with
-		# ascending predecessors until the invariant is maintained
-		parent_index = (i-1)>>1
-		while (i > 0) and self._index_lt(i, parent_index):
-			temp = self._array[i]
-			self._array[i] = self._array[parent_index]
-			self._array[parent_index] = temp
-			i = parent_index
-			parent_index = (i-1)>>1
-		self.size += 1
-	
-	def pop(self):
-		"""Remove the minimal value from the heap and restore the invariant.
-		Time is O(lg n). Popping all the values off returns them in sorted
-		order."""
-		if self.size == 0:
-			raise ValueError('cannot pop element off empty heap')
-		
-		# smallest element is always top element
-		popped = self._array[0]
-		
-		if self.size==1:
-			self.size = 0
-			return popped
-		
-		self._array[0] = self._array[self.size-1]
-		self.size -= 1
-		self._maintain_invariant(0)
-		"""if self._downsize and (self.size < (len(self._array)>>1)):
-			new = np.zeros(self.size, dtype=self._array.dtype)#
-			new[:] = self._array[:self.size]
-			self._array = new"""
-		return popped
-	
-	def _heapify(self):
-		"""Build a heap in place in O(n) time."""
-		for i in range((self.size-1) >> 1, -1, -1): # a>>1 = a//2
-			self._maintain_invariant(i)
-	
-	def _isleaf(self, i):
-		"""Return whether or not the index denotes a leaf.
-		Note: currently no bounds checking implemented, so you will not be
-		warned if you call an index beyond the heap's size.
-		"""
-		return (i<<1) + 1 >= self.size
-	
-	def __maintain_invariant(self, i):
-		"""Ensure that the invariant is maintained for a parent at position `i`
-		and its children, i.e. ensure the parent value is not greater than
-		the values of its children; if so, correct the invariant (swap the
-		parent with the lesser of its children), and return the index that
-		received the former parent value. If no swap occurs, return -1 to
-		signify that the invariant was already maintained."""
-		# by default invariant is maintained at leaves, so if we find a leaf
-		# there is no need to check whether it maintains the invariant
-		if not self._isleaf(i):
-			parent = self._array[i]
-			left_index = (i<<1) + 1 # (i*2) + 1
-			right_index = (i<<1) + 2 # (i*2) + 2
-			left = self._array[left_index]
-			
-			# valid heap indices range is [0, size-1]
-			# don't consider right index if it exceeds range of heap
-			if right_index == self.size:
-				if self._element_gt(parent, left):
-					j = left_index
-					temp = self._array[j]
-					self._array[j] = self._array[i]
-					self._array[i] = temp
-					return j
-			else:
-				# consider left and right children
-				right = self._array[right_index]
-				if self._element_gt(parent, left) or self._element_gt(parent, right):
-					# if parent > either of children, swap with smaller child
-					if self._element_lt(left, right):
-						j = left_index
-					else:
-						j = right_index
-					temp = self._array[j]
-					self._array[j] = self._array[i]
-					self._array[i] = temp
-					return j
-		return -1
-	
-	def _maintain_invariant(self, i):
-		"""Ensure the heap invariant for the root at position `i`.
-		Uses an iterative solution rather than a recursive one because
-		(1) it is more efficient anyway and (2) numba (0.5.1) does not yet
-		support re-entrant calls on methods of compiled classes."""
-		
-		while i!=-1: # return signal to indicate that invariant is ensured
-			i = self.__maintain_invariant(i)
-	
-	def empty(self):
-		return typed.List([self.pop() for _ in range(self.size)])
 	
 	def merge(self):
 		"""Given this instance with sorted arrays on the heap,
@@ -214,37 +92,123 @@ class _ArrayHeap:
 				self.push(array[1:])
 		
 		return out
-	
-	def _maintains_invariant_at_index(self, i):
-		"""Test method: verify that a parent is <= its children"""
-		parent_value = self._array[i]
-		left_index = (i<<1) + 1
-		right_index = (i<<1) + 2
-		if (left_index < self.size) and self._index_gt(i, left_index):
-			print('\t!!! parent @ index',i,'> left child @ index', left_index)
-			return False
-		if (right_index < self.size) and self._index_gt(i, right_index):
-			print('\t!!! parent @ index',i,'> right child @ index', right_index)
-			return False
-		return True
-	
-	def _maintains_invariant(self):
-		"""Test method: verify that invariant is maintained throughout heap."""
-		for i in range((self.size-1) >> 1, -1, -1):
-			if not self._maintains_invariant_at_index(i):
-				print('\tinvariant broken at index', str(i)+',', 'value', self._array[i],
-# 					  'children {self.get_children(i)}, array {self._array}'
-					  )
-				return False
-		return True
 
 def merge(arrays):
 	return ArrayHeap(typed.List(arrays).merge())
 
 ArrayHeap = jitclass(
-	{'size':nb.int_,'_downsize':nb.int_,
-	'_array':nb.types.ListType(nb.int_[::1])}
+	{'size':int_,'_downsize':int_,
+	'_array':ListType(int_[::1])}
 )(_ArrayHeap)
+
+
+@assign(__functions__)
+class _ArrayMedianHeap:
+	"""Heap on sorted arrays that are compared by median values over windows.
+	
+	The median of a sorted array over a given window is calculated as
+	>>> array[(high+low) // 2]
+	
+	if it has an odd number of elements, this is the proper median;
+	for an even-sized array, it is the left median.
+	
+	The low and high values can be adjusted to adjust the window
+	over which the median is sought. The reasons for doing this involves
+	an algorithm that makes use of this data structure.
+	
+	Because numba allows for reading/writing data beyond the valid bounds of
+	Python arrays, a trick is used in this class to store the low/high bounds:
+	they are stored immediately beyond the range of data that Python recognizes
+	an array as having. The constructor ensures this logic is followed.
+	The undesirable part is that this requires copying all arrays that are
+	received; I will consider later how to address this.
+	"""
+	def element_median_index(self, element)
+		"""Return the index of the median of an element array
+		over its current window."""
+		n = len(element)
+		return (element[n] + element[n+1]) // 2
+	
+	def index_median_index(self, index)
+		"""Return the index of the median the array at a given index
+		over the array's current window."""
+		element = self._array(index)
+		n = len(element)
+		return (element[n] + element[n+1]) // 2
+	
+	def element_median(self, element):
+		"""Return the median of an element array over its current window."""
+		n = len(element)
+		# the low/high bounds are stored at memory addresses
+		# beyond what Python recognizes to be valid, but the
+		# class constructor operates in such a way so as to ensure
+		# that the desired values will indeed be stored there,
+		# and numba allows this to be done because it operates
+		# at the C level.
+		return element[(element[n] + element[n+1]) // 2]
+	
+	def index_median(self, index):
+		"""Return the median of an the array at a given index
+		over its current window."""
+		element = self._array(index)
+		n = len(element)
+		return element[(element[n] + element[n+1]) // 2]
+	
+	def element_medians(self):
+		"""Return the medians of all arrays over their current windows."""
+		return np.array([self.element_median(e) for e in self._array], dtpye=int)
+	
+	def element_median_indices(self):
+		"""Return the indices of the medians of all arrays
+		over their current windows."""
+		return np.array([self.element_median_index(e) for e in self._array], dtpye=int)
+	
+	def element_low_high(self, element):
+		"""Return the low and high bounds (both inclusive) defining the
+		current window for an element array."""
+		n = len(element)
+		return np.array((element[element[n]], element[element[n+1]]), dtype=int_)
+	
+	def index_low_high(self, index):
+		"""Return the low and high bounds (both inclusive) defining the
+		current window for an element array at the given index."""
+		element = self._array[index]
+		n = len(element)
+		return np.array((element[element[n]], element[element[n+1]]), dtype=int_)
+	
+	def elements_lows_highs(self):
+		"""Return the low and high bounds (both inclusive) defining the
+		current window for all arrays on the heap."""
+		return np.array([self.element_low_high(e) for e in self._array], dtype=int_)
+	
+	def _element_lt(self, element1, element2):
+		"""Return whether a given array compares less than another array,
+		with the comparison defined by comparison of medians."""
+		return element_median(element1) < element_median(element2)
+	
+	def _index_lt(self, index1, index2):
+		"""Return whether the array at a given index compares less than the
+		array at another index, with the comparison defined by comparison of
+		medians."""
+		return element_median(self._array[index1]) < element_median(self._array[index2])
+	
+	def _element_gt(self, element1, element2):
+		"""Return whether a given array compares greater than another array,
+		with the comparison defined by comparison of medians."""
+		return element_median(element1) > element_median(element2)
+	
+	def _index_gt(self, index1, index2):
+		"""Return whether the array at a given index compares greater than the
+		array at another index, with the comparison defined by comparison of
+		medians."""
+		return element_median(self._array[index1]) > element_median(self._array[index2])
+
+ArrayMedianHeap = jitclass(
+	{'size':int_,'_downsize':int_,
+	'_array':ListType(int_[::1])}
+)(_ArrayMedianHeap)
+
+
 if __name__ == '__main__':
 	import numpy as np
 	from common import print_update
