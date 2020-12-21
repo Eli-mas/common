@@ -112,8 +112,9 @@ def eslice(iterable,start=None,end=None,step=None):
 
 def groupby_whole(values,key,double=False):
     """
-    Accomplish what `groupby` accomplishes, but without results being sorted,
-    and returning all results at once rather than as a generator. Output is returned as a dict.
+    Accomplish what `groupby` accomplishes, but without
+    results being sorted, and returning all results at once
+    rather than as a generator. Output is returned as a dict.
     
     If double is True, then instead of using lists to hold results while
     the output dict is being built, use deques, and cast these into lists

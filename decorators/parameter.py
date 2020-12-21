@@ -233,8 +233,10 @@ def modify_parameters_dynamically(**operations):
 			arglim = min(len(args),len(pos_arg))
 			argint = set(kwargs.keys()).intersection(pos_arg[i] for i in range(arglim))
 			if argint:
-				raise TypeError(f"{function.__qualname__}() got multiple values for argument "
-								f"'{min(v for k,v in pos_arg.items() if v in argint)}'")
+				raise TypeError(
+					f"{function.__qualname__}() got multiple values for argument "
+					f"'{min(v for k,v in pos_arg.items() if v in argint)}'"
+				)
 			
 			opkeys = operations.keys()
 			opkeys_defaults = opkeys & defaults.keys()
@@ -250,10 +252,10 @@ def modify_parameters_dynamically(**operations):
 			# now add in dynamic keywords in case of override
 			source.update({k:operations[k](kwargs[k]) for k in overriden_default_opkeys})
 			# update with positionally specified args
-			# this could be made more efficient: pos_arg[i] is being called twice
-			# Python 3.8 --> assignment expressions
 			consume(source.pop(pos_arg[i],None) for i in range(arglim))
 # 			arg_inds = [i if i<len(pos_arg else )]
+			# this could be made more efficient: pos_arg[i] is being called twice
+			# Python 3.8 --> assignment expressions
 			subargs = (
 				operations[pos_arg[i]](a) if (pos_arg[i] in operations)
 				else a
@@ -271,32 +273,9 @@ def verify_and_modify_parameters(verifications, modifications):
 	# can either be a combination of internal logic of above functions,
 	# or simply a decorator stack, once I get that to work
 
-def makeax(parameter):
-	"""
-	Given a function that specifies a keyword corresponding to a matplotlib
-	Axes instance, automatically submit an axis for the keyword to the function
-	at runtime if the keyword receives None (the intended default). The axis
-	is given by plt.gca().
-	
-	Note to self: this should probably be moved to mpl_wrap
-	"""
-	from matplotlib import pyplot as plt
-	op = lambda ax: plt.gca() if ax is None else ax
-	
-	if isinstance(parameter,str):
-		# 'parameter' is the name of the argument that is targeted
-		return modify_parameters_dynamically(
-			**{parameter:lambda ax: plt.gca() if ax is None else ax}
-		)
-	else:
-		# 'parameter' is the function, and it is assumed that 'ax' is the argument name
-		return modify_parameters_dynamically(
-			ax=lambda ax: plt.gca() if ax is None else ax
-		)(parameter)
-
 __all__ = ('assert_objects_are_of_specified_types','validate_parameter_types',
 'separate_required_and_default_parameters','operate_on_params_dynamically',
-'modify_parameters_dynamically', 'makeax')
+'modify_parameters_dynamically')
 
 if __name__ == '__main__':
 	from matplotlib import pyplot as plt

@@ -2,6 +2,7 @@
 at the moment a small module with mostly file-related utilities."""
 
 import os
+import re
 from pathlib import Path
 from os.path import join
 
@@ -69,7 +70,28 @@ def filternone(obj, replacement):
 	"""Return replacement if obj is None else obj"""
 	return replacement if obj is None else obj
 
-__all__ = [
-	'asPath','makepath','makepath_from_file','get_filetype','change_filetype',
-	'print_update','HOMEFOLDER', 'getattrs','filternone','with_filename'
-]
+def reparse(expression, repstr, pattern=None, attributes=None):
+	if pattern is None:
+		try: pattern = re.compile("|".join(attributes))
+		except TypeError: raise ValueError(
+			"`reparse`: if `pattern` is None, pass an iterable "
+			"of strings for `attributes` parameter"
+		)
+	elif not isinstance(pattern, re.Pattern):
+		raise TypeError("`reparse`: pass a re.Pattern instance for `pattern` parameter")
+	regions = ((m.start(), m.end()) for m in pattern.finditer(expression))
+	
+	out = []
+	start = 0
+	for _start, _end in regions:
+		out.append((False, start, _start))
+		out.append((True, _start, _end))
+		start = _end
+	out.append((False, _end, len(expression)))
+	
+	return ''.join(f'{repstr}.{expression[s:e]}' if r else expression[s:e]
+				   for r,s,e in out)
+
+__all__ = ['asPath','makepath','makepath_from_file','get_filetype',
+'change_filetype','print_update','HOMEFOLDER', 'getattrs','filternone',
+'with_filename', 'reparse']

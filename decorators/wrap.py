@@ -16,14 +16,15 @@ To do:
 from itertools import chain
 from ..common.funcs import getattrs
 
-__add_doc_template = '\n\n<<< documentation for {}>>>\n{}'
+__add_doc_template = '\n\n<<< documentation for {} >>>\n{}'
+__add_doc_const_template = '\n\n<<< CONSTANTS >>>\n{}'
 
 def tryname(obj):
 	try: return obj
 	except: return obj
 
 def add_doc(*referent_functions, __add_doc_template = __add_doc_template):
-	"""A decorator which, when called on a function, adds to the function's
+	"""A decorator that, when called on a function, adds to the function's
 	documentation the documentation from each function supplied in
 	`refernt_functions`.
 	
@@ -43,6 +44,23 @@ def add_doc(*referent_functions, __add_doc_template = __add_doc_template):
 		return function
 	return _add_doc
 
+def add_doc_constants(mapping, *names):
+	"""A decorator that, when called on a function, adds to the function's
+	documentation a titled, newline-separated list of constants supplied to the
+	decorator by way of a mapping <name: value> and a list of names
+	to take from the mapping."""
+	def _add_const(function):
+		function.__doc__ = (
+			f"{function.__doc__}{__add_doc_const_template}".format(
+				"\n".join(
+					f"\t{name}: {mapping[name]}"
+					for name in names
+				)
+			)
+		)
+		return function
+	return _add_const
+
 def assign(names_values_mapping):
 	"""Given a mapping (dict-like object) of names to values,
 	return a function that assigns these values to an object
@@ -52,7 +70,7 @@ def assign(names_values_mapping):
 				for name, value in names_values_mapping.items())
 	return _assign
 
-__all__ = ('add_doc','assign')
+__all__ = ('add_doc','assign','add_doc_constants')
 
 if __name__ == '__main__':
 	def a():
