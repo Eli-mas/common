@@ -4,7 +4,7 @@ from skimage.util import view_as_windows
 
 from numpy import nan
 
-def rolling_sum(ar,half,axis,weights=None,weighter=None,pr=False,squeeze=True):
+def rolling_sum(ar, half, axis, weights=None, weighter=None, pr=False, squeeze=True):
 	"""
 	Take a rolling sum along a given axis/axes
 	:param ar: input array
@@ -16,18 +16,46 @@ def rolling_sum(ar,half,axis,weights=None,weighter=None,pr=False,squeeze=True):
 	:param squeeze:
 	:return:
 	"""
-	a=np.copy(ar)
-	w=np.ones(a.ndim,dtype=int)
-	axis=np.atleast_1d(axis)
-	window=2*np.atleast_1d(half)+1
-	w[axis]=window
+	a = np.copy(ar)
+	# the window should have value 1 along any axes
+	# where we are not taking a rolling aggregate
+	w = np.ones(a.ndim, dtype=int)
+	axis = np.atleast_1d(axis)
+	window = 2*np.atleast_1d(half)+1
+	w[axis] = window
 	
-	newaxis=axis+a.ndim
+	newaxis = axis+a.ndim
 	
-	if len(window)!=len(axis):
+	if len(window) != len(axis):
 		raise ValueError('`window` and `axis` must have equal lengths')
 	
-	view=view_as_windows(a, w)
+	"""
+	to understand why this works:
+	
+	view_as_windows returns a rolling-window view into a
+	such that if
+		>>> v = view_as_windows(a, window)
+		>>> s = np.atleast_1d(a.shape)
+	
+	where d == len(window) == a.ndim, then
+		>>> np.array(v.shape) == np.append(1 + s - window, window)
+		>>> v[i_0, i_1, ..., i_d] == a[
+		... 	i_0 : i_0 + window[0],
+		... 	i_1 : i_1 + window[1], 
+		... 	...,
+		... 	i_d : i_d + window[d]
+		... ] \
+	
+	In words, indexing into v at some index with size a.ndim yields the
+	same result as taking a slice of a at that index with the slice having
+	the dimensions of `window`.
+	
+	So if we want to perform an aggregation over each location of the rolling
+	window in a, what we really want to do is perform the same aggreagation over
+	the equivalent location in v; this means aggregating over the last d axes
+	of v.
+	"""
+	view = view_as_windows(a, w)
 	if pr: print(
 		'input array',a,'axis',axis,'newaxis',newaxis,
 		'window',window,'w',w,'view <shape:%s>'%(view.shape,),view,
@@ -35,30 +63,28 @@ def rolling_sum(ar,half,axis,weights=None,weighter=None,pr=False,squeeze=True):
 	)
 	
 	if weights is not None:
-		weights=np.atleast_1d(weights)
-		wshape=weights.shape
-		if not np.array_equal(wshape,window):
+		weights = np.atleast_1d(weights)
+		wshape = weights.shape
+		if not np.array_equal(wshape, window):
 			raise ValueError('weights must have equal number of dimensions to window dimensions')
 		
 		if pr: print('view shape',view.shape,'weights (initial)',weights,'wshape',wshape, sep='\n')
 		
-		wshape_new=np.ones(2*a.ndim,dtype=int)
-		wshape_new[newaxis]=wshape
-		weights=weights.reshape(wshape_new)
+		wshape_new = np.ones(2*a.ndim, dtype=int)
+		wshape_new[newaxis] = wshape
+		weights = weights.reshape(wshape_new)
 		if pr: print('wshape_new',wshape_new,'weights (reshaped)',weights, sep='\n')
-		weights=np.broadcast_to(weights,view.shape)
-		view=view*weights
+		weights = np.broadcast_to(weights, view.shape)
+		
+		view = view * weights
 		"""
 		!	!	!
-		At present testing, it appears the above line CANNOT be written as the following:
-			>>> view*=weights
+		Note, the above line CANNOT be written as the following:
+			>>> view *= weights
 		
-		trying to do so makes things go very wrong!
-		
-		why is this so?
-			probably because view_as_windows provides views into the original array,
-			and doing an in-place operation when multiple addresses in new array
-			map to same locations in original array causes problems
+		reason: view_as_windows provides views into the original array,
+		and doing an in-place operation when multiple addresses in new array
+		map to same locations in original array causes problems
 		"""
 		if pr: print('weights (broadcasted)',weights,'weights shape',weights.shape,'view (weighted)',view,sep='\n')
 		
@@ -66,26 +92,26 @@ def rolling_sum(ar,half,axis,weights=None,weighter=None,pr=False,squeeze=True):
 		if weighter.shape!=a.shape:
 			raise ValueError('if specified, `weighter` must have equal shape to input array')
 		
-		view= view * view_as_windows(weighter, w)
-	#return weights,view
-	res=np.nansum(view,axis=tuple(newaxis))
-	if squeeze: res=res.squeeze()
+		view = view * view_as_windows(weighter, w)
+	# return weights,view
+	res = np.nansum(view, axis=tuple(newaxis))
+	if squeeze: res = res.squeeze()
 	return res
 
-def rolling_mean(ar,*a,**k):
-	sum_res=rolling_sum(ar,*a,**k)
+def rolling_mean(ar, *a, **k):
+	sum_res = rolling_sum(ar,*a,**k)
 
-	nancheck=np.ones_like(ar,dtype=float)
-	nancheck[np.isnan(ar)]=nan
+	nancheck = np.ones_like(ar, dtype = float)
+	nancheck[np.isnan(ar)] = nan
 
-	nancheck_sum_res=rolling_sum(nancheck,*a,**k)
+	nancheck_sum_res = rolling_sum(nancheck, *a, **k)
 	
 	return sum_res/nancheck_sum_res
 
-def rolling_gmean(ar,*a,**k):
-	return 10**rolling_mean(np.log10(ar),*a,**k)
+def rolling_gmean(ar, *a, **k):
+	return 10 ** rolling_mean(np.log10(ar), *a, **k)
 
-def padder_for_roll_wrap(a,half,axis):
+def padder_for_roll_wrap(a, half, axis):
 	"""
 	Pad an array around the specified axes by the given pad sizes
 	:param a: input array

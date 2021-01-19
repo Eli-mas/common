@@ -10,8 +10,15 @@ from ..arrays import make_object_array
 from ..collections import consume
 
 class EmptyDictType:
+	"""In function parameter specifications, we can leave an empty
+	dict as the default to indicate that no keywords are being passed.
+	This has the disadvantage that the default parameter is mutable.
+	This class provides a solution: unpacking it with ** semantics
+	is the same as unpacking an empty mapping. Furthermore, this class
+	is a singleton to be efficient."""
 	_instance = None
 	def __new__(cls):
+		# singleton pattern
 		if cls._instance is None:
 			cls._instance = super().__new__(cls)
 		
@@ -19,6 +26,7 @@ class EmptyDictType:
 	
 	def keys(self): return ()
 	def values(self): return ()
+	def items(self): return ()
 
 EmptyDict = EmptyDictType()
 
@@ -61,6 +69,8 @@ class Struct: # extension of https://stackoverflow.com/a/45517161
 		return self.__dict__[key]
 	
 	def __setitem__(self, key, value):
+		if key not in self.__dict__:
+			self.names.append(key)
 		self.__dict__[key] = value
 
 class ArgumentManager:
@@ -173,6 +183,10 @@ class IterCall:
 		return tuple(self.function(*a, **k) for k in IterDict(iter_kw, **kw))
 
 class _CrossDictIterator:
+	"""Base class for classes that define iteration over a dictionary
+	whose values are containers by yielding, at each iteration step,
+	a dictionary with the same keys as the source dictionary, whose
+	values are the next values available across each iterable."""
 	def __init__(self, kwargs=None, **kw):
 		self._dictionary = kw
 		if kwargs is not None:
@@ -203,8 +217,10 @@ class IterDict(_CrossDictIterator):
 	
 	Iterate over the dictionary by zipping the value iterables into new dictionaries:
 		>>> list(d)
-		>>> # [dict(a=a0, b=b0, c=c0, ...), dict(a=a1, b=b1, c=c1, ...),
-		>>> #  dict(a=a2, b=b2, c=c2, ...), ...]
+		>>> # [dict(a=a0, b=b0, c=c0, ...),
+		       dict(a=a1, b=b1, c=c1, ...),
+		... #  dict(a=a2, b=b2, c=c2, ...),
+		...    ...]
 	
 	Iterables passed may be of different lengths; keywords are
 	dropped from the iteration as soon as they are omitted.
@@ -247,6 +263,9 @@ class IterDict(_CrossDictIterator):
 			raise StopIteration
 
 class CycleDict(_CrossDictIterator):
+	"""Similar to IterDict, but the iterables are made into
+	itertools.cycle instances, and thus can be iterated through
+	indefinitely."""
 	def __init__(self, kwargs=None, **kw):
 		self._dictionary = {k:cycle(v) for k,v in kw.items()}
 		if kwargs is not None:
@@ -529,7 +548,10 @@ class Proxy:
 	
 	def __init__(self, targets):
 # 		print('called Proxy.__init__')
-		self.targets = targets
+		if isinstance(targets, np.ndarray):
+			self.targets = targets
+		else:
+			self.targets = list(targets)
 	
 	def __getattr__(self, attr):
 		"""Retrieve the passed attribute on each object in self.targets.

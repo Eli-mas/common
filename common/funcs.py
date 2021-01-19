@@ -71,6 +71,40 @@ def filternone(obj, replacement):
 	return replacement if obj is None else obj
 
 def reparse(expression, repstr, pattern=None, attributes=None):
+	"""Given an `expression` (str) and a replacement string `repstr` (str),
+	use a regex pattern to replace occurrences of specific attributes
+	with strings indicating the getting of those attributes on the object
+	represented by `repstr`. I.e., for a matched attribute 'a', replace
+	occurences of 'a' with f'{repstr}.a' in `expression`.
+	
+	The attributes are either defined by `attributes` (iterable of str),
+	or by `pattern`, which should be a re.Pattern instance that matches
+	any of the desired attributes. At least one of these parameters must
+	be provided. If both are provided, only `pattern` is considered.
+		
+	Though I could offer the option for `pattern` to be a string, I did not
+	want to do this was since it might encourage one to submit a string to
+	this function repeatedly, having re.compile called on it repeatedly,
+	which is wasteful. A pattern should only be compiled once if it is to
+	be used repeatedly.
+	
+	Limitations at the moment:
+		* If `attributes` is suppled, the default behavior is to form a
+		  regex pattern by joining the attributes with '|', so that the
+		  pattern is an OR-join on the attributes. This can be improved
+		  to match the attributes only when they exist as entire words,
+		  not as part of other words. The '|'-joined pattern does not
+		  accomplish this.
+	
+	This implementation is efficient because it makes a single pass on
+	`expression` (due to pattern.finditer). It then uses the results of
+	pattern.finditer to isolate start and end regions that need replacing,
+	compiles these into a list, and then calls ''.join() to form the
+	new string. The O(1)-pass implementation means O(n*L) time overall,
+	where n = # of attributes and L=size of longest attribute, assuming
+	that pattern.finditer operates in linear time. If pattern.finditer
+	operates in super-linear time, so does this function.
+	"""
 	if pattern is None:
 		try: pattern = re.compile("|".join(attributes))
 		except TypeError: raise ValueError(
