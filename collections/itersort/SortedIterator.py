@@ -4,26 +4,7 @@ fundamental set operations on sorted data (union, intersection, difference,
 symmetric difference) without having to convert the sorted objects into sets.
 It exploits the sorted structure in the data to minimize operations.
 
-* IMPORTANT *
-Although the algorithm at work here might be theoretically efficient,
-this class cannot be considered production-ready because it is *very* slow.
-I am still peeling apart the reasons why this is, but I suspect it may come
-from two sources: (1) the deep nesting of function calls/yield statements
-that compose the class' functionality; (2) the interpreted nature of Python,
-which makes things all that much slower. There also could be sub-optimal
-design/implementation choices on my part aside from the nesting issue, though
-nothing blatant has revealed itself to me yet.
-
-If this could be rewritten in pure Python to be faster that would be nice. 
-Using Cython or Pypy might help, but I am not experienced enough with these
-to say. I don't think Numba would help in this case, because this class
-makes heavy use of Python-specific features and generators. A simplified
-version of this class supporting comparisons between only simple types,
-such as primitives and arrays of primitives, could theoretically be written
-entirely in Numba, possibly requiring rewriting without yield statements
-(Numba's current generator support is still early and experimental from what
-I understand). Rewriting this class in a compiled language should also help,
-though I am unable to do this at the moment.
+Not ready for production yet, too slow--I am looking into why this is so.
 """
 
 import operator
