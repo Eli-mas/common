@@ -15,6 +15,7 @@ To do:
 # from functools import partial
 from itertools import chain
 from ..common.funcs import getattrs
+from ..collections import consume
 
 __add_doc_template = '\n\n<<< documentation for {} >>>\n{}'
 __add_doc_const_template = '\n\n<<< CONSTANTS >>>\n{}'
@@ -70,7 +71,40 @@ def assign(names_values_mapping):
 				for name, value in names_values_mapping.items())
 	return _assign
 
-__all__ = ('add_doc','assign','add_doc_constants')
+def redirect_output_closure():
+	import sys
+	STDOUT, STDERR = sys.stdout, sys.stderr
+	names = ['stdout', 'stderr']
+	def redirect_output(stdout = STDOUT, stderr = STDERR, mode = 'a')
+		if 'r' in mode:
+			raise ValueError("cannot specify read-only mode")
+		def decorator(func):
+			def wrapper(*a, **kw):
+				files = [stdout, stderr]
+				originals = [STDOUT, STDERR]
+				close = [False]*2
+				for i,f,n,o in enumerate(zip(files, names, originals)):
+					if isinstance(n, str):
+						try:
+							files[i] = open(n, mode)
+							close[i] = True
+						except:
+							files[i] = o
+							close[i] = False
+					setattr(sys, n, files[i])
+				result = func(*a, **kw)
+				for f,c in zip(files, close):
+					if c: f.close()
+				sys.stdout = STDOUT
+				sys.stderr = STDERR
+				return result
+			return wrapper
+		return decorator
+	return redirect_output
+
+redirect_output = redirect_output_closure()
+
+__all__ = ('add_doc', 'assign', 'add_doc_constants')
 
 if __name__ == '__main__':
 	def a():
