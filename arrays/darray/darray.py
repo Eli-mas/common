@@ -1,5 +1,4 @@
-"""Defines a wrapper around the numpy array (in theory, any array type)
-that automatically deforests chained operations.
+"""Wrapper around the numpy array that automatically deforests chained operations.
 
 I.e., say we have this expression:
 	>>> result = a + b * (c**2 + d**2)
