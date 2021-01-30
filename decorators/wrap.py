@@ -75,7 +75,7 @@ def redirect_output_closure():
 	import sys
 	STDOUT, STDERR = sys.stdout, sys.stderr
 	names = ['stdout', 'stderr']
-	def redirect_output(stdout = STDOUT, stderr = STDERR, mode = 'a')
+	def redirect_output(stdout = STDOUT, stderr = STDERR, mode = 'a'):
 		if 'r' in mode:
 			raise ValueError("cannot specify read-only mode")
 		def decorator(func):

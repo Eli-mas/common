@@ -35,6 +35,7 @@ TO DO:
 	* `FUNC` case not implemented
 	* Instead of `op_map` and `bin_op_to_np`, we could just have one
 	  dict directly mapping the input functions to the numpy ufuncs
+	* Indexing is not yet supported.
 """
 from functools import partial
 from itertools import islice
@@ -132,44 +133,7 @@ class DeforestedArray:
 	
 	FUNCTYPES = {UNI_OP, BIN_OP, BIN_OP_R, FUNC}
 	
-	np_func_map = {
-		# BINARY
-		'+': np.add,
-		'-': np.subtract,
-		'*': np.multiply,
-		'/': np.true_divide,
-		'**': np.power,
-		'//': np.floor_divide,
-		'==': np.equal,
-		'!=': np.not_equal,
-		'<': np.less,
-		'<=': np.less_equal,
-		'>=': np.greater_equal,
-		'>': np.greater,
-		'<<': np.left_shift,
-		'>>': np.right_shift,
-		'&': np.bitwise_and,
-		'|': np.bitwise_or,
-		'~': np.bitwise_not,
-		'^': np.bitwise_xor,
-		'%': np.mod,
-		
-		## UNITARY
-		'-': np.negative,
-		'+': np.positive,
-		'~': np.invert,
-		
-		## FUNC
-		
-		# bool is interesting because it is a unitary function but must be
-		# converted from a binary function because it is a method on ndarray,
-		# not a numpy module-level function; partial transformation ensures
-		# it can be be called as a unitary function here
-		'bool': partial(np.ndarray.astype, dtype=bool),
-		'abs': np.abs,
-	}
-	
-	def __init__(self, ops=None, index=1, optypes=None, data=None, remember=None):
+	def __init__(self, data=None, *, ops=None, index=1, optypes=None, remember=None):
 		data = np.asarray(data)
 		self.data = data
 		self.refcount = 0
@@ -245,7 +209,7 @@ class DeforestedArray:
 		optypes.append(direction_constant)
 		# return the new instance. we have add two elements (`other` and a
 		# symbol denoting an operation), so the index increases by 2.
-		return self.__class__(ops, index = self.index+2, optypes = optypes)
+		return self.__class__(ops = ops, index = self.index+2, optypes = optypes)
 	
 	def __update_unary__(self, symbol):
 		# optimization: see above for explanation
@@ -260,7 +224,7 @@ class DeforestedArray:
 		optypes.append(self.UNI_OP)
 		# return the new instance. we have only added a single element,
 		# so the index increases by 1.
-		return self.__class__(ops, index = self.index+1, optypes = optypes)
+		return self.__class__(ops = ops, index = self.index+1, optypes = optypes)
 	
 	def __update_func__(self, name):
 		# optimization: see above for explanation
@@ -275,7 +239,7 @@ class DeforestedArray:
 		optypes.append(self.FUNC)
 		# return the new instance. we have only added a single element,
 		# so the index increases by 1.
-		return self.__class__(ops, index = self.index+1, optypes = optypes)
+		return self.__class__(ops = ops, index = self.index+1, optypes = optypes)
 	
 	for name, symbol in op_map.items():
 		exec(f'def __{name}__(self,other): '

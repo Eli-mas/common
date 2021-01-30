@@ -35,7 +35,7 @@ def test_expr(expr, *, _v = False, _checktype=False, ndarray=np.ndarray):#, tdp=
 	data_strings = tuple(f"(10**{i} * np.arange(1, 5))"
 						 for i,n in enumerate(unique_names))
 	for _____n, _____d in zip(unique_names, data_strings):
-		exec(f"{_____n} = DeforestedArray(data={_____d})")
+		exec(f"{_____n} = DeforestedArray({_____d})")
 		if verbose: print(f'\t\t{_____n}: string = "{_____d}", result =', eval(_____n))
 	
 	deforested = eval(expr)
