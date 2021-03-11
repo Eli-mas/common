@@ -278,20 +278,4 @@ __all__ = ('assert_objects_are_of_specified_types','validate_parameter_types',
 'modify_parameters_dynamically')
 
 if __name__ == '__main__':
-	from matplotlib import pyplot as plt
-	
-	#@modify_parameters_dynamically(x=lambda x: range(5))
-	@makeax('ax')
-	### stacking these doesn't work yet
-	def plot_points(x=None,y=None,ax=None):
-		if x is None:
-			x = range(5)
-		if y is None:
-			lines = ax.lines
-			if lines: y = lines[-1].get_ydata()+1
-			else: y = range(5)
-		ax.plot(x,y,marker='o',ls='none')
-	
-	for _ in range(4):
-		plot_points()
-	plt.show()
+	...

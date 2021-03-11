@@ -27,6 +27,7 @@ class EmptyDictType:
 	def keys(self): return ()
 	def values(self): return ()
 	def items(self): return ()
+	def get(self,key,default=None): return default
 
 EmptyDict = EmptyDictType()
 
@@ -58,6 +59,9 @@ class Struct: # extension of https://stackoverflow.com/a/45517161
 	def values(self, names=None):
 		if names is None: names = self.names
 		return (getattr(self, n) for n in names)
+	
+	def items(self):
+		return zip(self.keys(), self.values())
 	
 	def __iter__(self):
 		return ((n, getattr(self, n)) for n in self.names)

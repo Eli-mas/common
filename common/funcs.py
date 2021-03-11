@@ -5,6 +5,7 @@ import os
 import re
 from pathlib import Path
 from os.path import join
+from ..collections import consume
 
 HOMEFOLDER = os.path.expanduser('~')
 
@@ -70,6 +71,14 @@ def filternone(obj, replacement):
 	"""Return replacement if obj is None else obj"""
 	return replacement if obj is None else obj
 
+def tprint(*objs, s='\t'):
+	"""Print an object with some space string `s` inserted at each line.
+	Note: uses '\n' to find newline, this might not be fully portable.
+	"""
+	for obj in objs:
+		if not isinstance(obj, str): obj = str(obj)
+		consume(print(f'{s}{l}') for l in obj.split('\n'))
+
 __all__ = ['asPath','makepath','makepath_from_file','get_filetype',
 'change_filetype','print_update','HOMEFOLDER', 'getattrs','filternone',
-'with_filename']
+'with_filename', 'tprint']
